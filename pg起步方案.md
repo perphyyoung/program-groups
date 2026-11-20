@@ -313,7 +313,7 @@ MVP 只扫描开始菜单，因此：
 4. 数据库：`node:sqlite` 建表、`library:load` 查询、扫描后 reconcile、缺失标记；用临时库做单测。
 5. IPC + preload + `api.d.ts`，串通「启动加载 → 后台扫描 → 刷新列表」。
 6. UI：侧栏、网格、多选、选择栏、归组/移除、分组 CRUD、搜索、启动、空态、提示。
-7. e2e：用 `PG_DATA_DIR` 隔离数据、`PG_SCAN_DIRS` 指向 fixture 开始菜单；覆盖首次扫描、归组、多组、重启持久化、删组、搜索、缺失保留。
+7. e2e：按场景拆成 `01-app-shell` / `02-scan` / `03-groups`，fixtures 负责实例复用、临时数据目录与重启；覆盖首次扫描、图标、已忽略、建组、多组归属、重启持久化。各文件范围见 [e2e/e2e-readme.md](./e2e/e2e-readme.md)。
 8. `pnpm check` 全绿，`pnpm e2e` 通过，`pnpm release` 打 NSIS 包。
 
 ## 10. 验收标准
@@ -413,7 +413,8 @@ MVP 已实现，并通过质量门与 e2e。
 
 - `pnpm test`：13 条通过（3 个文件）
 - `pnpm check`：format / oxlint / eslint / type-check / test / build 全绿，0 warning
-- `pnpm e2e`：1 条通过（开始菜单扫描、建组、多组归属、重启持久化、`pg-icon://` 图标加载）
+- `pnpm e2e`：3 个文件 3 条用例通过（启动骨架、扫描与已忽略、建组与多组归属、重启持久化、`pg-icon://` 图标加载）
+- e2e 基建：`e2e-helper.ts` / `e2e-logger.ts` / `fixtures.ts`，实例按 spec 文件复用，`slot.relaunch()` 验证重启回填
 - `pnpm release`：打出 `release/Program Groups Setup 0.1.0.exe`
 - 本机开始菜单实测：359 个快捷方式，保留 191 个，忽略 136 个，重复 32 个；金山文档、微信输入法恢复，四个产品自定义卸载入口被过滤
 - 图标缓存实测：第二次启动 `icons=0/191`，没有重新解析图标
