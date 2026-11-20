@@ -19,6 +19,7 @@ export interface StartMenuScanResult {
   ignored: number;
   ignoredItems: IgnoredItem[];
   duplicate: number;
+  duplicateItems: IgnoredItem[];
 }
 
 export function startMenuRoots(): string[] {
@@ -94,27 +95,27 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
       iconLocation = details.icon?.trim() || null;
       iconIndex = typeof details.iconIndex === "number" ? details.iconIndex : null;
     } catch {
-      ignoredItems.push({ name, target: "", reason: "unreadable" });
+      ignoredItems.push({ name, target: "", shortcutPath: lnkPath, reason: "unreadable" });
       return;
     }
 
     if (!target || extname(target).toLowerCase() !== ".exe") {
-      ignoredItems.push({ name, target, reason: "invalid-target" });
+      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: "invalid-target" });
       return;
     }
     if (!existsSync(target)) {
-      ignoredItems.push({ name, target, reason: "missing-target" });
+      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: "missing-target" });
       return;
     }
     if (!name) {
-      ignoredItems.push({ name: "", target, reason: "invalid-name" });
+      ignoredItems.push({ name: "", target, shortcutPath: lnkPath, reason: "invalid-name" });
       return;
     }
 
     const relativePath = relativeToRoot(lnkPath, roots);
     const ignoreReason = isIgnoredShortcut(name, target, shortcutArgs, relativePath);
     if (ignoreReason) {
-      ignoredItems.push({ name, target, reason: ignoreReason });
+      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: ignoreReason });
       return;
     }
 
@@ -134,10 +135,19 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
   });
 
   const picked = pickBestShortcuts(candidates);
-  const pickedSet = new Set(picked);
-  let duplicate = 0;
+  const pickedById = new Map(picked.map((candidate) => [candidate.id, candidate]));
+  const duplicateItems: IgnoredItem[] = [];
   for (const candidate of candidates) {
-    if (!pickedSet.has(candidate)) duplicate += 1;
+    const kept = pickedById.get(candidate.id);
+    if (kept === candidate) continue;
+    const item: IgnoredItem = {
+      name: candidate.name,
+      target: candidate.targetPath,
+      shortcutPath: candidate.launchPath,
+      reason: "duplicate",
+    };
+    if (kept) item.keptAs = kept.name;
+    duplicateItems.push(item);
   }
 
   return {
@@ -145,7 +155,8 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     scanned: links.length,
     ignored: ignoredItems.length,
     ignoredItems,
-    duplicate,
+    duplicate: duplicateItems.length,
+    duplicateItems,
   };
 }
 

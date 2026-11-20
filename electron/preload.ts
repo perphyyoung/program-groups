@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("memberships:remove", appIds, groupId),
   launchApp: (appId: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("apps:launch", appId),
+  revealShortcut: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("apps:revealShortcut", path),
   onScanProgress: (callback: (progress: ScanProgress) => void): (() => void) => {
     const listener = (_event: unknown, progress: ScanProgress): void => callback(progress);
     ipcRenderer.on("scan:progress", listener);

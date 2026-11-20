@@ -49,12 +49,17 @@ export type IgnoreReason =
   | "unreadable"
   | "invalid-target"
   | "missing-target"
-  | "invalid-name";
+  | "invalid-name"
+  | "duplicate";
 
 export interface IgnoredItem {
   name: string;
   target: string;
+  /** 快捷方式 .lnk 的绝对路径，用于在资源管理器中定位 */
+  shortcutPath: string;
   reason: IgnoreReason;
+  /** 仅重复项：与该快捷方式指向同一应用、且已被收录的名称 */
+  keptAs?: string;
 }
 
 export interface ScanSummary {
@@ -63,6 +68,7 @@ export interface ScanSummary {
   ignored: number;
   ignoredItems: IgnoredItem[];
   duplicate: number;
+  duplicateItems: IgnoredItem[];
   added: number;
   updated: number;
   missing: number;

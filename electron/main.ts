@@ -9,7 +9,7 @@ import {
   type WebContents,
 } from "electron";
 import { existsSync, mkdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   addMembers,
@@ -29,7 +29,7 @@ import {
   renameGroup,
 } from "./db";
 import { log, logPath } from "./logger";
-import { extractIcons, scanStartMenu } from "./scan";
+import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
 import type {
   AppRecord,
   AppView,
@@ -154,6 +154,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       ignored: result.ignored,
       ignoredItems: result.ignoredItems,
       duplicate: result.duplicate,
+      duplicateItems: result.duplicateItems,
       ...reconciled,
       changed: reconciled.changed || iconResult.extracted > 0,
     };
@@ -272,6 +273,25 @@ ipcMain.handle("apps:launch", (_event, appId: unknown) =>
     }
     const error = await shell.openPath(appRecord.launchPath);
     if (error) return { ok: false, error };
+    return { ok: true };
+  }),
+);
+
+ipcMain.handle("apps:revealShortcut", (_event, shortcutPath: unknown) =>
+  handleIpcAsync("apps:revealShortcut", async () => {
+    if (typeof shortcutPath !== "string" || shortcutPath.length === 0) {
+      return { ok: false, error: "路径无效" };
+    }
+    const resolved = resolve(shortcutPath);
+    if (extname(resolved).toLowerCase() !== ".lnk") {
+      return { ok: false, error: "只能打开快捷方式" };
+    }
+    if (!existsSync(resolved)) return { ok: false, error: "快捷方式不存在" };
+    const inStartMenu = startMenuRoots().some((root) =>
+      resolved.toLowerCase().startsWith(`${root.toLowerCase()}\\`),
+    );
+    if (!inStartMenu) return { ok: false, error: "快捷方式不在开始菜单目录内" };
+    shell.showItemInFolder(resolved);
     return { ok: true };
   }),
 );

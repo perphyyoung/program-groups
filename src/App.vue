@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import AccordionSection from "./components/AccordionSection.vue";
 import AppCard from "./components/AppCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
+import { groupIgnoredItems } from "./lib/ignored-groups";
 import type {
   AppView,
   AppViewFilter,
@@ -23,7 +25,8 @@ const apps = ref<AppView[]>([]);
 const groups = ref<GroupView[]>([]);
 const missingCount = ref(0);
 const ignoredItems = ref<IgnoredItem[]>([]);
-const duplicateCount = ref(0);
+const duplicateItems = ref<IgnoredItem[]>([]);
+const openReasons = ref<Set<IgnoreReason>>(new Set());
 const view = ref<AppViewFilter>({ kind: "ungrouped" });
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -49,20 +52,14 @@ const ignoredCount = computed(() => ignoredItems.value.length);
 const viewApps = computed(() => filterApps(apps.value, view.value, ""));
 const filteredApps = computed(() => filterApps(apps.value, view.value, search.value));
 
-const filteredIgnored = computed(() => {
-  const keyword = search.value.trim().toLowerCase();
-  return ignoredItems.value
-    .filter(
-      (item) =>
-        !keyword ||
-        item.name.toLowerCase().includes(keyword) ||
-        item.target.toLowerCase().includes(keyword),
-    )
-    .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
-});
+const ignoredGroups = computed(() =>
+  groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value),
+);
 
 const headerCount = computed(() =>
-  view.value.kind === "ignored" ? filteredIgnored.value.length : viewApps.value.length,
+  view.value.kind === "ignored"
+    ? ignoredGroups.value.reduce((sum, group) => sum + group.items.length, 0)
+    : viewApps.value.length,
 );
 const headerUnit = computed(() => (view.value.kind === "ignored" ? "项" : "个应用"));
 
@@ -104,20 +101,21 @@ function groupNamesOf(app: AppView): string[] {
     .filter((name): name is string => Boolean(name));
 }
 
-const REASON_LABELS: Record<IgnoreReason, string> = {
-  uninstall: "卸载入口",
-  help: "帮助/说明",
-  website: "官网/更新",
-  system: "系统工具",
-  installer: "安装程序",
-  unreadable: "快捷方式无法解析",
-  "invalid-target": "目标不是可执行文件",
-  "missing-target": "目标文件不存在",
-  "invalid-name": "名称为空",
-};
+/** 搜索时强制展开命中组，清空搜索后恢复手动状态 */
+function isGroupOpen(reason: IgnoreReason): boolean {
+  return search.value.trim() !== "" || openReasons.value.has(reason);
+}
 
-function reasonLabel(reason: IgnoreReason): string {
-  return REASON_LABELS[reason];
+function toggleGroup(reason: IgnoreReason): void {
+  const next = new Set(openReasons.value);
+  if (next.has(reason)) next.delete(reason);
+  else next.add(reason);
+  openReasons.value = next;
+}
+
+async function revealShortcut(item: IgnoredItem): Promise<void> {
+  const result = await window.api.revealShortcut(item.shortcutPath);
+  if (!result.ok) showToast(`打开失败：${result.error ?? "未知错误"}`, "error");
 }
 
 function firstChar(name: string): string {
@@ -166,7 +164,7 @@ async function scan(): Promise<void> {
   try {
     const summary = await window.api.scanLibrary();
     ignoredItems.value = summary.ignoredItems;
-    duplicateCount.value = summary.duplicate;
+    duplicateItems.value = summary.duplicateItems;
     if (summary.changed) await load();
     showToast(
       `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
@@ -362,12 +360,6 @@ onBeforeUnmount(() => {
           <div class="min-w-0">
             <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
             <p class="mt-0.5 text-xs text-slate-500">{{ headerCount }} {{ headerUnit }}</p>
-            <p
-              v-if="view.kind === 'ignored' && duplicateCount > 0"
-              class="mt-1 text-xs text-slate-600"
-            >
-              另有 {{ duplicateCount }} 个重复快捷方式，应用已收录
-            </p>
           </div>
           <div class="ml-auto flex items-center gap-2">
             <input
@@ -388,36 +380,57 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+        <div
+          data-testid="main-scroll"
+          class="min-h-0 flex-1 overflow-y-auto scroll-pt-12 px-5 pb-5"
+        >
           <div v-if="view.kind === 'ignored'" class="h-full">
-            <div
-              v-if="filteredIgnored.length > 0"
-              class="overflow-hidden rounded-xl border border-white/10"
-            >
-              <div
-                v-for="(item, index) in filteredIgnored"
-                :key="`${item.reason}-${index}`"
-                class="flex items-start gap-3 border-b border-white/5 px-4 py-3 last:border-b-0"
+            <div v-if="ignoredGroups.length > 0" class="space-y-2 pt-5">
+              <AccordionSection
+                v-for="group in ignoredGroups"
+                :key="group.reason"
+                :title="group.label"
+                :count="group.items.length"
+                :open="isGroupOpen(group.reason)"
+                @toggle="toggleGroup(group.reason)"
               >
+                <p
+                  v-if="group.reason === 'duplicate'"
+                  class="border-t border-white/5 px-4 py-2 text-xs text-slate-500"
+                >
+                  这些快捷方式指向已收录的应用，可直接删除
+                </p>
                 <div
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-sm font-semibold text-slate-300"
+                  v-for="item in group.items"
+                  :key="item.shortcutPath"
+                  class="flex items-start gap-3 border-t border-white/5 px-4 py-3"
                 >
-                  {{ firstChar(item.name) }}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm text-slate-200">
-                    {{ item.name || "（无名称）" }}
+                  <div
+                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-sm font-semibold text-slate-300"
+                  >
+                    {{ firstChar(item.name) }}
                   </div>
-                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
-                    {{ item.target || "（无目标）" }}
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1 text-sm text-slate-200">
+                      <span class="min-w-0 truncate">{{ item.name || "（无名称）" }}</span>
+                      <span v-if="item.keptAs" class="shrink-0 text-xs text-slate-500">
+                        已收录为「{{ item.keptAs }}」
+                      </span>
+                    </div>
+                    <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
+                      {{ item.target || "（无目标）" }}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+                    :aria-label="`打开「${item.name || '未命名'}」所在位置`"
+                    @click="revealShortcut(item)"
+                  >
+                    打开位置
+                  </button>
                 </div>
-                <span
-                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
-                >
-                  {{ reasonLabel(item.reason) }}
-                </span>
-              </div>
+              </AccordionSection>
             </div>
             <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
               {{ emptyText }}
@@ -427,7 +440,7 @@ onBeforeUnmount(() => {
           <template v-else>
             <div
               v-if="filteredApps.length > 0"
-              class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3"
+              class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3 pt-5"
               @click.self="clearSelection"
             >
               <AppCard
