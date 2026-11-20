@@ -9,9 +9,9 @@ import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
 import { groupIgnoredItems } from "./lib/ignored-groups";
 import type {
-  AppView,
-  AppViewFilter,
-  GroupView,
+  AppEntry,
+  AppScope,
+  GroupEntry,
   IgnoredItem,
   IgnoreReason,
   ScanProgress,
@@ -19,17 +19,17 @@ import type {
 
 type DialogState =
   | { kind: "create"; value: string }
-  | { kind: "rename"; group: GroupView; value: string }
-  | { kind: "delete"; group: GroupView };
+  | { kind: "rename"; group: GroupEntry; value: string }
+  | { kind: "delete"; group: GroupEntry };
 
-const apps = ref<AppView[]>([]);
-const groups = ref<GroupView[]>([]);
+const apps = ref<AppEntry[]>([]);
+const groups = ref<GroupEntry[]>([]);
 const missingCount = ref(0);
 const ignoredItems = ref<IgnoredItem[]>([]);
 const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
-const view = ref<AppViewFilter>({ kind: "ungrouped" });
-const layout = ref<"list" | "grid">("list");
+const scope = ref<AppScope>({ kind: "ungrouped" });
+const view = ref<"list" | "grid">("list");
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
 const lastSelectedIndex = ref<number | null>(null);
@@ -51,22 +51,22 @@ const ungroupedCount = computed(
 const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length);
 
-const viewApps = computed(() => filterApps(apps.value, view.value, ""));
-const filteredApps = computed(() => filterApps(apps.value, view.value, search.value));
+const scopeApps = computed(() => filterApps(apps.value, scope.value, ""));
+const filteredApps = computed(() => filterApps(apps.value, scope.value, search.value));
 
 const ignoredGroups = computed(() =>
   groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value),
 );
 
 const headerCount = computed(() =>
-  view.value.kind === "ignored"
+  scope.value.kind === "ignored"
     ? ignoredGroups.value.reduce((sum, group) => sum + group.items.length, 0)
-    : viewApps.value.length,
+    : scopeApps.value.length,
 );
-const headerUnit = computed(() => (view.value.kind === "ignored" ? "项" : "个应用"));
+const headerUnit = computed(() => (scope.value.kind === "ignored" ? "项" : "个应用"));
 
 const currentTitle = computed(() => {
-  const current = view.value;
+  const current = scope.value;
   if (current.kind === "all") return "全部应用";
   if (current.kind === "ungrouped") return "未分组";
   if (current.kind === "ignored") return "已忽略";
@@ -75,9 +75,9 @@ const currentTitle = computed(() => {
 
 const emptyText = computed(() => {
   if (search.value.trim()) return "没有匹配的应用";
-  if (view.value.kind === "ungrouped") return "所有应用都已归类";
-  if (view.value.kind === "ignored") return "没有被忽略的应用";
-  if (view.value.kind === "group") return "这个分组还没有应用，把应用拖进来";
+  if (scope.value.kind === "ungrouped") return "所有应用都已归类";
+  if (scope.value.kind === "ignored") return "没有被忽略的应用";
+  if (scope.value.kind === "group") return "这个分组还没有应用，把应用拖进来";
   return "没有找到可启动的应用，点击刷新重试";
 });
 
@@ -97,7 +97,7 @@ function groupName(groupId: string): string {
   return groups.value.find((group) => group.id === groupId)?.name ?? "分组";
 }
 
-function groupNamesOf(app: AppView): string[] {
+function groupNamesOf(app: AppEntry): string[] {
   return app.groupIds
     .map((groupId) => groups.value.find((group) => group.id === groupId)?.name)
     .filter((name): name is string => Boolean(name));
@@ -124,8 +124,8 @@ function firstChar(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?";
 }
 
-function selectView(next: AppViewFilter): void {
-  view.value = next;
+function selectScope(next: AppScope): void {
+  scope.value = next;
   clearSelection();
 }
 
@@ -192,7 +192,7 @@ function clearSelection(): void {
   lastSelectedIndex.value = null;
 }
 
-function onSelect(app: AppView, event: MouseEvent): void {
+function onSelect(app: AppEntry, event: MouseEvent): void {
   const index = filteredApps.value.findIndex((item) => item.id === app.id);
   const next = new Set(selected.value);
   if (event.shiftKey && lastSelectedIndex.value !== null) {
@@ -215,7 +215,7 @@ function onSelect(app: AppView, event: MouseEvent): void {
   selected.value = next;
 }
 
-async function launch(app: AppView): Promise<void> {
+async function launch(app: AppEntry): Promise<void> {
   const result = await window.api.launchApp(app.id);
   if (!result.ok) {
     showToast(`启动失败：${result.error ?? "未知错误"}`, "error");
@@ -237,9 +237,9 @@ async function assignTo(groupId: string): Promise<void> {
 }
 
 async function removeFromCurrentGroup(): Promise<void> {
-  if (view.value.kind !== "group" || selected.value.size === 0) return;
+  if (scope.value.kind !== "group" || selected.value.size === 0) return;
   try {
-    await window.api.removeMembers(Array.from(selected.value), view.value.groupId);
+    await window.api.removeMembers(Array.from(selected.value), scope.value.groupId);
     clearSelection();
     await loadGroups();
     showToast("已移出分组", "info");
@@ -259,7 +259,7 @@ async function onDropApps(groupId: string, appIds: string[]): Promise<void> {
   }
 }
 
-function onDragStart(app: AppView, event: DragEvent): void {
+function onDragStart(app: AppEntry, event: DragEvent): void {
   const ids = selected.value.has(app.id) ? Array.from(selected.value) : [app.id];
   if (!selected.value.has(app.id)) selected.value = new Set([app.id]);
   event.dataTransfer?.setData("application/x-pg-apps", JSON.stringify(ids));
@@ -272,14 +272,14 @@ async function openCreate(): Promise<void> {
   dialogInput.value?.focus();
 }
 
-async function openRename(group: GroupView): Promise<void> {
+async function openRename(group: GroupEntry): Promise<void> {
   dialog.value = { kind: "rename", group, value: group.name };
   await nextTick();
   dialogInput.value?.focus();
   dialogInput.value?.select();
 }
 
-function openDelete(group: GroupView): void {
+function openDelete(group: GroupEntry): void {
   dialog.value = { kind: "delete", group };
 }
 
@@ -296,8 +296,8 @@ async function submitDialog(): Promise<void> {
       await loadGroups();
     } else {
       await window.api.deleteGroup(current.group.id);
-      if (view.value.kind === "group" && view.value.groupId === current.group.id) {
-        view.value = { kind: "ungrouped" };
+      if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
+        scope.value = { kind: "ungrouped" };
       }
       await loadGroups();
       showToast(`已删除分组「${current.group.name}」`, "info");
@@ -348,9 +348,9 @@ onBeforeUnmount(() => {
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
         :ignored-count="ignoredCount"
-        :active="view"
+        :active="scope"
         :scanning="scanning"
-        @select="selectView"
+        @select="selectScope"
         @create="openCreate"
         @rename="openRename"
         @delete="openDelete"
@@ -372,24 +372,24 @@ onBeforeUnmount(() => {
               class="h-8 w-56 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400/60"
             />
             <div
-              v-if="view.kind !== 'ignored'"
+              v-if="scope.kind !== 'ignored'"
               role="group"
-              aria-label="显示方式"
+              aria-label="视图"
               class="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/5 p-0.5"
             >
               <button
                 type="button"
                 class="h-7 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200 aria-pressed:bg-indigo-500/20 aria-pressed:text-indigo-200"
-                :aria-pressed="layout === 'list'"
-                @click="layout = 'list'"
+                :aria-pressed="view === 'list'"
+                @click="view = 'list'"
               >
                 列表
               </button>
               <button
                 type="button"
                 class="h-7 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200 aria-pressed:bg-indigo-500/20 aria-pressed:text-indigo-200"
-                :aria-pressed="layout === 'grid'"
-                @click="layout = 'grid'"
+                :aria-pressed="view === 'grid'"
+                @click="view = 'grid'"
               >
                 网格
               </button>
@@ -409,7 +409,7 @@ onBeforeUnmount(() => {
           data-testid="main-scroll"
           class="min-h-0 flex-1 overflow-y-auto scroll-pt-12 px-5 pb-5"
         >
-          <div v-if="view.kind === 'ignored'" class="h-full">
+          <div v-if="scope.kind === 'ignored'" class="h-full">
             <div v-if="ignoredGroups.length > 0" class="space-y-2 pt-5">
               <AccordionSection
                 v-for="group in ignoredGroups"
@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
 
           <template v-else>
             <div
-              v-if="filteredApps.length > 0 && layout === 'grid'"
+              v-if="filteredApps.length > 0 && view === 'grid'"
               data-testid="app-grid"
               class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3 pt-5"
               @click.self="clearSelection"
@@ -513,7 +513,7 @@ onBeforeUnmount(() => {
         </footer>
 
         <div
-          v-if="selectedCount > 0 && view.kind !== 'ignored'"
+          v-if="selectedCount > 0 && scope.kind !== 'ignored'"
           class="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4"
         >
           <div
@@ -547,7 +547,7 @@ onBeforeUnmount(() => {
               新建分组
             </button>
             <button
-              v-if="view.kind === 'group'"
+              v-if="scope.kind === 'group'"
               class="h-8 rounded-lg border border-white/10 px-3 text-xs text-slate-300 transition hover:bg-white/10"
               @click="removeFromCurrentGroup"
             >

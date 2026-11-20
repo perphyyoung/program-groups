@@ -1,24 +1,24 @@
 <script setup lang="ts">
-import type { AppViewFilter, GroupView } from "../lib/types";
+import type { AppScope, GroupEntry } from "../lib/types";
 
 defineProps<{
-  groups: GroupView[];
+  groups: GroupEntry[];
   totalCount: number;
   ungroupedCount: number;
   ignoredCount: number;
-  active: AppViewFilter;
+  active: AppScope;
   scanning: boolean;
 }>();
 
 const emit = defineEmits<{
-  select: [view: AppViewFilter];
+  select: [scope: AppScope];
   create: [];
-  rename: [group: GroupView];
-  delete: [group: GroupView];
+  rename: [group: GroupEntry];
+  delete: [group: GroupEntry];
   dropApps: [groupId: string, appIds: string[]];
 }>();
 
-function isActive(active: AppViewFilter, groupId: string): boolean {
+function isActive(active: AppScope, groupId: string): boolean {
   return active.kind === "group" && active.groupId === groupId;
 }
 

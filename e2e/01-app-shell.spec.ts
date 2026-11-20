@@ -9,10 +9,10 @@ test("启动后展示未分组骨架与侧栏计数", async ({ slot }) => {
   await expect(page.getByTestId("app-list")).toBeVisible();
   await expect(page.getByTestId("app-grid")).toHaveCount(0);
 
-  /* 显示方式：互斥按钮，默认列表；状态只从 aria-pressed 读取 */
-  const layoutGroup = page.getByRole("group", { name: "显示方式", exact: true });
-  const listButton = layoutGroup.getByRole("button", { name: "列表", exact: true });
-  const gridButton = layoutGroup.getByRole("button", { name: "网格", exact: true });
+  /* 视图：互斥按钮，默认列表；状态只从 aria-pressed 读取 */
+  const viewGroup = page.getByRole("group", { name: "视图", exact: true });
+  const listButton = viewGroup.getByRole("button", { name: "列表", exact: true });
+  const gridButton = viewGroup.getByRole("button", { name: "网格", exact: true });
   await expect(listButton).toHaveAttribute("aria-pressed", "true");
   await expect(gridButton).toHaveAttribute("aria-pressed", "false");
 

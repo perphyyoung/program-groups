@@ -12,12 +12,12 @@ export interface AppRecord {
   lastSeenAt: string;
 }
 
-export interface AppView extends AppRecord {
+export interface AppEntry extends AppRecord {
   groupIds: string[];
   iconUrl: string | null;
 }
 
-export interface GroupView {
+export interface GroupEntry {
   id: string;
   name: string;
   sort: number;
@@ -25,19 +25,19 @@ export interface GroupView {
 }
 
 export interface LibraryData {
-  apps: AppView[];
-  groups: GroupView[];
+  apps: AppEntry[];
+  groups: GroupEntry[];
   missingCount: number;
 }
 
-export interface MembershipView {
+export interface MembershipEntry {
   appId: string;
   groupId: string;
 }
 
 export interface GroupsData {
-  groups: GroupView[];
-  memberships: MembershipView[];
+  groups: GroupEntry[];
+  memberships: MembershipEntry[];
 }
 
 export type IgnoreReason =
@@ -84,7 +84,7 @@ export interface ScanProgress {
   failed?: number;
 }
 
-export type AppViewFilter =
+export type AppScope =
   | { kind: "all" }
   | { kind: "ungrouped" }
   | { kind: "ignored" }

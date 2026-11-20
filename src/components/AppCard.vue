@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { AppView } from "../lib/types";
+import type { AppEntry } from "../lib/types";
 
 defineProps<{
-  app: AppView;
+  app: AppEntry;
   selected: boolean;
   groupNames: string[];
 }>();

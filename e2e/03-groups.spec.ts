@@ -1,6 +1,6 @@
 import { expect, test } from "./fixtures";
 
-test("新建分组自动聚焦并保留视图，多组归属重启后保留", async ({ slot }) => {
+test("新建分组自动聚焦并保留当前栏，多组归属重启后保留", async ({ slot }) => {
   const { page } = slot;
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();

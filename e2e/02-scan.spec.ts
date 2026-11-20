@@ -18,8 +18,8 @@ test("扫描应用、图标、已忽略与重复快捷方式", async ({ slot }) 
   const ignoredNav = page.getByRole("button", { name: "已忽略", exact: true });
   await expect(ignoredNav).toContainText("1");
   await ignoredNav.click();
-  /* 已忽略视图不提供网格 / 列表切换 */
-  await expect(page.getByRole("group", { name: "显示方式", exact: true })).toHaveCount(0);
+  /* 已忽略栏不提供网格 / 列表视图切换 */
+  await expect(page.getByRole("group", { name: "视图", exact: true })).toHaveCount(0);
 
   const helpGroup = page.getByRole("button", { name: "帮助/说明", exact: true });
   const duplicateGroup = page.getByRole("button", { name: "重复快捷方式", exact: true });

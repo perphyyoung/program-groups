@@ -31,10 +31,10 @@ import {
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
 import type {
+  AppEntry,
   AppRecord,
-  AppView,
+  GroupEntry,
   GroupsData,
-  GroupView,
   LibraryData,
   ScanProgress,
   ScanSummary,
@@ -75,7 +75,7 @@ function iconUrl(appId: string, iconFile: string | null): string | null {
 }
 
 interface GroupData {
-  groups: GroupView[];
+  groups: GroupEntry[];
   memberships: { appId: string; groupId: string }[];
   groupIdsByApp: Map<string, string[]>;
 }
@@ -106,7 +106,7 @@ function loadGroupData(apps: AppRecord[]): GroupData {
 function loadLibrary(): LibraryData {
   const apps = listActiveApps();
   const { groups, groupIdsByApp } = loadGroupData(apps);
-  const appViews: AppView[] = apps.map((item) => ({
+  const appEntries: AppEntry[] = apps.map((item) => ({
     id: item.id,
     name: item.name,
     launchPath: item.launchPath,
@@ -120,7 +120,7 @@ function loadLibrary(): LibraryData {
     iconUrl: iconUrl(item.id, item.iconFile),
   }));
 
-  return { apps: appViews, groups, missingCount: countMissing() };
+  return { apps: appEntries, groups, missingCount: countMissing() };
 }
 
 function loadGroups(): GroupsData {
