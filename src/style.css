@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+:root {
+  color-scheme: dark;
+}
+
 html,
 body,
 #app {
@@ -10,7 +14,6 @@ body {
   margin: 0;
   background: #0b0d12;
   color: #e2e8f0;
-  color-scheme: dark;
   font-family: ui-sans-serif, system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
@@ -26,4 +29,67 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* 原生 select 的弹层由浏览器绘制，用 base-select 接管才能跟随深色主题 */
+select,
+select::picker(select) {
+  appearance: base-select;
+}
+
+select::picker(select) {
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.75rem;
+  background: #151b25;
+  color: #e2e8f0;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+select option {
+  padding: 6px 10px;
+  border-radius: 0.5rem;
+  background: #151b25;
+  color: #e2e8f0;
+}
+
+select option:checked,
+select option:hover,
+select option:focus {
+  background: rgb(99 102 241 / 20%);
+  color: #e0e7ff;
+}
+
+select option::checkmark {
+  color: #a5b4fc;
+}
+
+/* 箭头由自定义触发器内绘制，隐藏 UA 图标，保证与文字同一行垂直居中 */
+select::picker-icon {
+  display: none;
+}
+
+/* 自定义触发器：让文字在固定高度内垂直居中，超长内容省略 */
+select > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+select selectedcontent {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

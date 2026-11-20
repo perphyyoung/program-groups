@@ -93,6 +93,21 @@
 - [x] `pnpm check` 全绿，0 warning，18 条测试通过。
 - [x] `pnpm e2e` 通过，3 个文件 3 条用例。
 
+## 下拉框深色主题
+
+状态：已完成（2026-11-20）。
+
+- [x] `color-scheme: dark` 从 `body` 移到 `:root`。
+- [x] 「选择分组」启用 `appearance: base-select`，定制深色弹层、选项与选中态。
+- [x] 触发器文字垂直居中，固定 `w-24` 容纳 4 个中文字，超出省略并支持 title 查看全名。
+- [x] 箭头改为自绘并随文字垂直居中；用 `component :is` 渲染 button，消除 Vue 的 select 嵌套告警。
+- [x] 规则写入 [design.md](./design.md)。
+
+### 验证
+
+- [x] `pnpm check` 全绿，0 warning，18 条测试通过。
+- [x] `pnpm e2e` 通过，3 个文件 3 条用例。
+
 ## 暂不做
 
 - [ ] 从“已忽略”恢复到“未分组”或直接归组。

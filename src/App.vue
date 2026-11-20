@@ -524,8 +524,14 @@ onBeforeUnmount(() => {
               <select
                 v-model="targetGroupId"
                 aria-label="选择分组"
-                class="h-8 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-200 outline-none"
+                :title="targetGroupId ? groupName(targetGroupId) : '加入分组…'"
+                class="h-8 w-24 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-slate-200 outline-none"
               >
+                <!-- 用 component 渲染 button：HTML 规范不允许 button 直接作为 select 子元素，Vue 编译器会告警 -->
+                <component :is="'button'" type="button">
+                  <selectedcontent></selectedcontent>
+                  <span aria-hidden="true" class="text-[10px] leading-none text-slate-400">▾</span>
+                </component>
                 <option value="" disabled>加入分组…</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">
                   {{ group.name }}

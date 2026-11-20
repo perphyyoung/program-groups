@@ -15,7 +15,12 @@ test("新建分组自动聚焦并保留当前栏，多组归属重启后保留",
   await expect(appCard).toBeVisible();
 
   await appCard.click();
-  await page.getByLabel("选择分组").selectOption({ label: "测试组" });
+  const groupSelect = page.getByLabel("选择分组");
+  /* 固定宽度按 4 个中文字预留，选择不同分组时不跳动 */
+  const selectBox = await groupSelect.boundingBox();
+  expect(selectBox?.width ?? 0).toBeGreaterThanOrEqual(94);
+  expect(selectBox?.width ?? 0).toBeLessThanOrEqual(98);
+  await groupSelect.selectOption({ label: "测试组" });
   await page.getByRole("button", { name: "加入", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toContainText("1");
 
