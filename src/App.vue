@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppCard from "./components/AppCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
+import AppToast from "./components/AppToast.vue";
+import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
 import type {
   AppView,
@@ -27,11 +29,14 @@ const search = ref("");
 const selected = ref<Set<string>>(new Set());
 const lastSelectedIndex = ref<number | null>(null);
 const scanning = ref(false);
-const scanText = ref("");
+const scanProgress = ref<ScanProgress | null>(null);
+const showScanProgress = ref(false);
+const scanError = ref<string | null>(null);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
+let progressTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeScan: (() => void) | null = null;
 
 const ungroupedCount = computed(
@@ -85,7 +90,7 @@ function showToast(message: string, kind: "info" | "error"): void {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toast.value = null;
-  }, 2600);
+  }, 3600);
 }
 
 function groupName(groupId: string): string {
@@ -151,7 +156,12 @@ async function loadGroups(): Promise<void> {
 async function scan(): Promise<void> {
   if (scanning.value) return;
   scanning.value = true;
-  scanText.value = "扫描中…";
+  scanError.value = null;
+  scanProgress.value = { phase: "start-menu", done: 0, total: 0 };
+  if (progressTimer) clearTimeout(progressTimer);
+  progressTimer = setTimeout(() => {
+    if (scanning.value) showScanProgress.value = true;
+  }, 150);
   try {
     const summary = await window.api.scanLibrary();
     ignoredItems.value = summary.ignoredItems;
@@ -162,21 +172,18 @@ async function scan(): Promise<void> {
       "info",
     );
   } catch (error) {
-    showToast(`扫描失败：${errorMessage(error)}`, "error");
+    scanError.value = errorMessage(error);
   } finally {
     scanning.value = false;
-    scanText.value = "";
+    scanProgress.value = null;
+    showScanProgress.value = false;
+    if (progressTimer) clearTimeout(progressTimer);
+    progressTimer = null;
   }
 }
 
 function onScanProgress(progress: ScanProgress): void {
-  if (progress.phase === "start-menu") {
-    scanText.value = `扫描开始菜单 ${progress.done}/${progress.total}`;
-  } else if (progress.phase === "icons") {
-    scanText.value = `检查图标 ${progress.done}/${progress.total}（缓存 ${progress.cached ?? 0}，提取 ${progress.extracted ?? 0}）`;
-  } else {
-    scanText.value = "整理完成";
-  }
+  scanProgress.value = progress;
 }
 
 function clearSelection(): void {
@@ -309,11 +316,27 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unsubscribeScan?.();
   if (toastTimer) clearTimeout(toastTimer);
+  if (progressTimer) clearTimeout(progressTimer);
 });
 </script>
 
 <template>
   <div class="flex h-full flex-col bg-[#0b0d12]">
+    <div v-if="scanError" role="alert" class="fixed inset-x-0 top-3 z-40 flex justify-center px-4">
+      <div
+        class="flex w-full max-w-xl items-start gap-3 rounded-xl border border-rose-500/40 bg-[#2a1216] px-4 py-3 text-sm text-rose-200 shadow-2xl"
+      >
+        <span class="min-w-0 flex-1">扫描失败：{{ scanError }}</span>
+        <button
+          type="button"
+          class="shrink-0 rounded-md px-2 py-0.5 text-xs text-rose-300 transition hover:bg-white/10 hover:text-rose-100"
+          @click="scanError = null"
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+
     <div class="flex min-h-0 flex-1">
       <AppSidebar
         :groups="groups"
@@ -350,11 +373,12 @@ onBeforeUnmount(() => {
               class="h-8 w-56 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400/60"
             />
             <button
-              class="h-8 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-300 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-40"
+              class="h-8 w-[68px] rounded-lg border border-white/10 bg-white/5 text-sm text-slate-300 transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="scanning"
+              :aria-busy="scanning"
               @click="scan"
             >
-              {{ scanning ? scanText || "扫描中…" : "刷新" }}
+              刷新
             </button>
           </div>
         </header>
@@ -425,7 +449,6 @@ onBeforeUnmount(() => {
             共 {{ apps.length }} 个应用 · 未分组 {{ ungroupedCount }}
             <span v-if="missingCount > 0"> · 缺失 {{ missingCount }}</span>
           </span>
-          <span v-if="scanning">{{ scanText }}</span>
         </footer>
 
         <div
@@ -540,16 +563,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div
-      v-if="toast"
-      class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border px-4 py-2 text-sm shadow-2xl"
-      :class="
-        toast.kind === 'error'
-          ? 'border-rose-500/40 bg-rose-500/15 text-rose-200'
-          : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
-      "
-    >
-      {{ toast.message }}
-    </div>
+    <AppToast v-if="toast" :message="toast.message" :kind="toast.kind" />
+
+    <ScanProgressCard v-if="scanning && showScanProgress" :progress="scanProgress" />
   </div>
 </template>

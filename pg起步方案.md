@@ -149,7 +149,7 @@ MVP 只扫描开始菜单，因此：
 - 根目录：`%APPDATA%\Microsoft\Windows\Start Menu\Programs`、`%ProgramData%\Microsoft\Windows\Start Menu\Programs`。
 - 递归查找 `.lnk`；跳过 `Startup` 目录。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
-- 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`，界面底部显示「新增 N · 忽略 M · 重复 D · 缺失 K」。
+- 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`；扫描结束后底部居中提示「扫描完成：新增 N，缺失 M，忽略 I，重复 D」。
 
 ### 4.3 图标
 
@@ -158,7 +158,7 @@ MVP 只扫描开始菜单，因此：
 - 图标通过 `pg-icon://<appId>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
 - 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
 - 提取失败写 `icons/<appId>.miss`，源文件不变时不重试；成功后正常写 PNG。
-- 并发 8；扫描进度显示「检查图标 N/N（缓存 X，提取 Y）」。
+- 并发 8；右下角进度卡片显示「检查图标 N/N · 缓存 X · 提取 Y」。
 - 不在 SQLite 里存 BLOB。
 
 ### 4.4 增量与缺失
@@ -225,8 +225,11 @@ MVP 只扫描开始菜单，因此：
 ### 6.3 刷新
 
 - 启动：先从 SQLite 读缓存渲染，再后台 `library:scan`；扫描完成刷新列表。
-- 手动刷新：顶部按钮；扫描中按钮禁用并显示进度文案。
-- 扫描进度事件：`{ phase: 'start-menu' | 'registry' | 'icons' | 'done', done, total }`，MVP 只在按钮旁显示「扫描中 12/80」，不做全屏进度页。
+- 手动刷新：顶部按钮固定显示「刷新」，扫描期间禁用，不随进度改变宽度和文案。
+- 扫描进度：右下角固定容器展示进度卡片，内容为阶段 + `done/total`、缓存/提取数量、进度条；延迟 150ms 出现，避免快速扫描闪烁。
+- 扫描结束：底部居中显示结果提示「新增 / 缺失 / 忽略 / 重复」，约 3.6 秒后消失；不做全屏进度页。
+- 进度卡片与 toast 是各自独立的组件：进度固定右下角，toast 固定在底部居中，互不遮挡。
+- 扫描失败：顶部常驻 Alert，显示失败原因并需手动关闭；重新扫描时清除。
 
 ## 7. 存储与 IPC
 
@@ -249,6 +252,7 @@ MVP 只扫描开始菜单，因此：
 | 通道 | 入参 | 返回 |
 | --- | --- | --- |
 | `library:load` | — | `{ apps: AppView[]; groups: GroupView[]; missingCount: number }`（`apps` 只含 active） |
+| `library:groups` | — | `{ groups: GroupView[]; memberships: MembershipView[] }`（分组变更后只刷新这部分） |
 | `library:scan` | — | `ScanSummary` |
 | `groups:create` | `name` | `GroupView` |
 | `groups:rename` | `id, name` | `void` |
@@ -262,7 +266,7 @@ MVP 只扫描开始菜单，因此：
 
 | 事件 | 载荷 | 用途 |
 | --- | --- | --- |
-| `scan:progress` | `{ phase, done, total }` | 扫描进度 |
+| `scan:progress` | `{ phase, done, total, cached?, extracted?, failed? }` | 扫描进度 |
 
 约定：
 
@@ -421,6 +425,7 @@ MVP 已实现，并通过质量门与 e2e。
 - 已忽略视图：与未分组平级，展示名称、目标路径与忽略原因，支持搜索
 - 帮助/更新/卸载规则区分产品名与功能入口；重复快捷方式单独计数
 - 图标缓存优化：`pg-icon://` 协议、扫描无变化跳过二次刷新、失败负缓存、`.lnk` mtime 失效判断
+- 扫描状态：右下角进度卡片显示阶段与进度条，扫描结束后底部居中显示结果提示；刷新按钮固定宽度、扫描期间禁用
 - 搜索、启动、空态、轻提示
 - dev / e2e 数据隔离与 electron-log 日志
 
