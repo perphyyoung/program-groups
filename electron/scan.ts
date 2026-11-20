@@ -81,11 +81,13 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     }
 
     let target = "";
+    let shortcutArgs = "";
     let iconLocation: string | null = null;
     let iconIndex: number | null = null;
     try {
       const details = shell.readShortcutLink(lnkPath);
       target = details.target?.trim() ?? "";
+      shortcutArgs = details.args?.trim() ?? "";
       iconLocation = details.icon?.trim() || null;
       iconIndex = typeof details.iconIndex === "number" ? details.iconIndex : null;
     } catch (error) {
@@ -108,8 +110,10 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     }
 
     const relativePath = relativeToRoot(lnkPath, roots);
-    if (isIgnoredShortcut(name, target, relativePath)) {
+    const ignoreReason = isIgnoredShortcut(name, target, shortcutArgs, relativePath);
+    if (ignoreReason) {
       ignored += 1;
+      log.debug(`[scan] 忽略 ${name} (${ignoreReason}): ${target}`);
       return;
     }
 
@@ -121,6 +125,7 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
       launchKind: "lnk",
       exePath,
       targetPath: resolve(target),
+      arguments: shortcutArgs,
       iconLocation,
       iconIndex,
       relativePath,

@@ -158,7 +158,7 @@ MVP 只扫描开始菜单，因此：
 
 | 类型 | 规则 |
 | --- | --- |
-| 卸载项 | 名称或目标包含 `uninstall`、`unins`、`卸载`、`remove` |
+| 卸载项 | 目标文件名匹配 `unins000.exe`、`uninstall.exe`、`uninstall_*.exe`，或 `msiexec.exe` 带 `/x`；不按名称子串判断，避免误伤 Wise Program Uninstaller 这类产品 |
 | 帮助/文档 | 名称包含 `help`、`readme`、`说明`、`文档`、`教程`、`manual`、`documentation` |
 | 网址/更新 | 名称包含 `website`、`官网`、`update`、`更新`、`repair`、`修复` |
 | 系统工具 | 位于「Windows 附件 / 管理工具 / 系统工具 / 辅助工具 / Windows PowerShell」等系统目录下 |
@@ -362,6 +362,7 @@ MVP 只扫描开始菜单，因此：
 | D11 | 分组排序 | 按创建顺序，不做拖拽排序；分组内按名称 | 2026-11-20 |
 | D12 | 注册表扫描 | MVP 不做，只扫开始菜单；后续再加，避免不可启动项与编码/解析复杂度 | 2026-11-20 |
 | D13 | 分组图标 / 颜色 | MVP 不做，只显示名称与计数 | 2026-11-20 |
+| D14 | 卸载项过滤 | 按目标 exe 精确模式 + `msiexec /x` 判断，不按名称子串；避免误伤产品名带 Uninstaller 的应用 | 2026-11-20 |
 
 ## 12. 落地已知坑
 
@@ -370,6 +371,7 @@ MVP 只扫描开始菜单，因此：
 - Electron 45 不再通过 postinstall 下载二进制；`node_modules/electron/dist` 缺失时执行 `pnpm exec install-electron`，国内加 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`。
 - Playwright 启动 Electron 用 `args: ["."]`，不要传 `out/main/main.js`，否则 `app.getAppPath()` 指向错误目录、preload 拼接失败。
 - MSI 的 advertised shortcut 目标可能落在 `C:\Windows\Installer\` 下，这是正常的；不要因此丢弃，启动仍用 `.lnk`。
+- 卸载项不要按名称子串判断：产品名可能包含 Uninstaller（Wise Program Uninstaller、Uninstall Tool）；按目标 exe 精确模式和 `msiexec /x` 参数判断。
 - 同一 exe 有多个快捷方式时，按「开始菜单相对路径长度 + 名称」稳定排序取第一个，避免每次扫描名称/图标抖动。
 - `app.getFileIcon` 必须在 `app.whenReady()` 后调用；图标失败只记日志，不阻断扫描。
 - renderer 不能 import 任何 `node:` 模块；搜索、计数、名称清理等纯函数放 `src/lib`，主进程与渲染进程共用。
@@ -428,7 +430,7 @@ MVP 已实现，并通过质量门与 e2e。
 - `pnpm check`：format / oxlint / eslint / type-check / test / build 全绿，0 warning
 - `pnpm e2e`：1 条通过（开始菜单扫描、建组、多组归属、重启持久化）
 - `pnpm release`：打出 `release/Program Groups Setup 0.1.0.exe`
-- 本机开始菜单实测：359 个快捷方式，保留 188 个，过滤 171 个
+- 本机开始菜单实测：359 个快捷方式，保留 193 个，过滤 166 个；修复卸载项误伤后 Wise Program Uninstaller 正常出现
 
 已实现：
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 export interface ShortcutCandidate {
   id: string;
@@ -8,6 +8,7 @@ export interface ShortcutCandidate {
   launchKind: "lnk";
   exePath: string;
   targetPath: string;
+  arguments: string;
   iconLocation: string | null;
   iconIndex: number | null;
   relativePath: string;
@@ -47,13 +48,24 @@ export function cleanShortcutName(fileName: string): string {
     .trim();
 }
 
+/** 真正的卸载入口：按目标 exe 的精确模式与 msiexec 参数判断，不按名称子串 */
+function isUninstallerTarget(target: string, args: string): boolean {
+  const base = basename(target).toLowerCase();
+  if (/^unins\d+\.exe$/u.test(base)) return true;
+  if (/^(uninstall|uninstaller|uninst)\.exe$/u.test(base)) return true;
+  if (/^uninstall_.+\.exe$/u.test(base)) return true;
+  if (base === "msiexec.exe" && /\/x\b/iu.test(args)) return true;
+  return false;
+}
+
 export function isIgnoredShortcut(
   name: string,
   target: string,
+  args: string,
   relativePath: string,
 ): ShortcutIgnoreReason | null {
   const text = `${name} ${target}`.toLowerCase();
-  if (/uninstall|unins|卸载|remove/u.test(text)) return "uninstall";
+  if (isUninstallerTarget(target, args)) return "uninstall";
   if (/help|readme|about|帮助|关于|说明|文档|教程|manual|documentation/u.test(text)) return "help";
   if (/website|官网|update|更新|repair|修复/u.test(text)) return "website";
   if (SYSTEM_DIRS.has(name.toLowerCase())) return "system";

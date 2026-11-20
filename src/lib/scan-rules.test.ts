@@ -16,6 +16,7 @@ function candidate(overrides: Partial<ShortcutCandidate>): ShortcutCandidate {
     launchKind: "lnk",
     exePath: "C:\\Apps\\demo.exe",
     targetPath: "C:\\Apps\\demo.exe",
+    arguments: "",
     iconLocation: null,
     iconIndex: null,
     relativePath: "工具\\示例.lnk",
@@ -37,20 +38,47 @@ describe("scan rules", () => {
     expect(appIdForExe(a)).toBe(appIdForExe(b));
   });
 
-  it("过滤卸载、帮助、更新、系统工具与安装器", () => {
+  it("过滤真正的卸载入口，但不误伤产品名带 Uninstaller 的应用", () => {
     const base = "C:\\Apps\\app.exe";
-    expect(isIgnoredShortcut("卸载 Demo", base, "Demo\\卸载 Demo.lnk")).toBe("uninstall");
-    expect(isIgnoredShortcut("Demo 帮助", base, "Demo\\帮助.lnk")).toBe("help");
-    expect(isIgnoredShortcut("About Java", base, "Java\\About Java.lnk")).toBe("help");
-    expect(isIgnoredShortcut("Administrative Tools", base, "Administrative Tools.lnk")).toBe(
+    expect(
+      isIgnoredShortcut("卸载 Demo", "C:\\Apps\\unins000.exe", "", "Demo\\卸载 Demo.lnk"),
+    ).toBe("uninstall");
+    expect(isIgnoredShortcut("7-Zip 卸载", "C:\\Apps\\Uninstall.exe", "", "7-Zip\\卸载.lnk")).toBe(
+      "uninstall",
+    );
+    expect(
+      isIgnoredShortcut(
+        "MSI App",
+        "C:\\Windows\\System32\\msiexec.exe",
+        "/x {GUID}",
+        "MSI App\\卸载.lnk",
+      ),
+    ).toBe("uninstall");
+    expect(
+      isIgnoredShortcut(
+        "Wise Program Uninstaller",
+        "C:\\Program Files (x86)\\Wise\\Wise Program Uninstaller\\WiseProgramUninstaller.exe",
+        "",
+        "Wise Program Uninstaller\\Wise Program Uninstaller.lnk",
+      ),
+    ).toBeNull();
+    expect(
+      isIgnoredShortcut("Uninstall Tool", "C:\\Apps\\UninstallTool.exe", "", "Uninstall Tool.lnk"),
+    ).toBeNull();
+
+    expect(isIgnoredShortcut("Demo 帮助", base, "", "Demo\\帮助.lnk")).toBe("help");
+    expect(isIgnoredShortcut("About Java", base, "", "Java\\About Java.lnk")).toBe("help");
+    expect(isIgnoredShortcut("Administrative Tools", base, "", "Administrative Tools.lnk")).toBe(
       "system",
     );
-    expect(isIgnoredShortcut("检查更新", base, "Demo\\更新.lnk")).toBe("website");
+    expect(isIgnoredShortcut("检查更新", base, "", "Demo\\更新.lnk")).toBe("website");
     expect(
-      isIgnoredShortcut("记事本", "C:\\Windows\\notepad.exe", "Windows 附件\\记事本.lnk"),
+      isIgnoredShortcut("记事本", "C:\\Windows\\notepad.exe", "", "Windows 附件\\记事本.lnk"),
     ).toBe("system");
-    expect(isIgnoredShortcut("Demo", "C:\\Apps\\setup.exe", "Demo\\Demo.lnk")).toBe("installer");
-    expect(isIgnoredShortcut("看图王", base, "看图\\看图王.lnk")).toBeNull();
+    expect(isIgnoredShortcut("Demo", "C:\\Apps\\setup.exe", "", "Demo\\Demo.lnk")).toBe(
+      "installer",
+    );
+    expect(isIgnoredShortcut("看图王", base, "", "看图\\看图王.lnk")).toBeNull();
   });
 
   it("同一 exe 只保留最浅、名称最稳定的快捷方式", () => {
