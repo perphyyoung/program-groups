@@ -7,6 +7,9 @@ export interface ShortcutCandidate {
   launchPath: string;
   launchKind: "lnk";
   exePath: string;
+  targetPath: string;
+  iconLocation: string | null;
+  iconIndex: number | null;
   relativePath: string;
 }
 

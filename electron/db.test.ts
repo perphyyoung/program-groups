@@ -27,6 +27,9 @@ function app(id: string, name: string): DiscoveredApp {
     launchPath: `C:\\Start\\${name}.lnk`,
     launchKind: "lnk",
     exePath: `C:\\Apps\\${name}.exe`,
+    targetPath: `C:\\Apps\\${name}.exe`,
+    iconLocation: null,
+    iconIndex: null,
     relativePath: `${name}.lnk`,
     iconFile: null,
   };

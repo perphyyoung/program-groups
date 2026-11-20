@@ -15,6 +15,9 @@ function candidate(overrides: Partial<ShortcutCandidate>): ShortcutCandidate {
     launchPath: "C:\\Start\\示例.lnk",
     launchKind: "lnk",
     exePath: "C:\\Apps\\demo.exe",
+    targetPath: "C:\\Apps\\demo.exe",
+    iconLocation: null,
+    iconIndex: null,
     relativePath: "工具\\示例.lnk",
     ...overrides,
   };

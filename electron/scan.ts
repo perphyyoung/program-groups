@@ -1,7 +1,7 @@
-import { app, shell } from "electron";
+import { app, shell, type NativeImage } from "electron";
 import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 import {
   appIdForExe,
   cleanShortcutName,
@@ -81,8 +81,13 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     }
 
     let target = "";
+    let iconLocation: string | null = null;
+    let iconIndex: number | null = null;
     try {
-      target = shell.readShortcutLink(lnkPath).target?.trim() ?? "";
+      const details = shell.readShortcutLink(lnkPath);
+      target = details.target?.trim() ?? "";
+      iconLocation = details.icon?.trim() || null;
+      iconIndex = typeof details.iconIndex === "number" ? details.iconIndex : null;
     } catch (error) {
       ignored += 1;
       log.debug(
@@ -115,6 +120,9 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
       launchPath: lnkPath,
       launchKind: "lnk",
       exePath,
+      targetPath: resolve(target),
+      iconLocation,
+      iconIndex,
       relativePath,
     });
   });
@@ -125,6 +133,35 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     scanned: links.length,
     ignored: ignored + (candidates.length - picked.length),
   };
+}
+
+/** 快捷方式的 IconLocation 可能带 ",索引"，图标文件本身要先把索引部分去掉 */
+function iconPathOnly(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith(",")) return null;
+  const comma = trimmed.lastIndexOf(",");
+  if (comma > 1 && /^\d+$/u.test(trimmed.slice(comma + 1).trim())) {
+    return trimmed.slice(0, comma).trim();
+  }
+  return trimmed;
+}
+
+/** 优先用快捷方式指定的图标位置，其次用目标 exe；两者都比 .lnk 自身可靠 */
+function iconSourceOf(candidate: ShortcutCandidate): string {
+  const iconLocation = iconPathOnly(candidate.iconLocation);
+  if (iconLocation && existsSync(iconLocation)) return iconLocation;
+  return candidate.targetPath;
+}
+
+async function loadIconImage(candidate: ShortcutCandidate): Promise<NativeImage> {
+  const primary = iconSourceOf(candidate);
+  const image = await app.getFileIcon(primary, { size: "large" });
+  if (!image.isEmpty() || primary === candidate.targetPath) return image;
+
+  const targetImage = await app.getFileIcon(candidate.targetPath, { size: "large" });
+  if (!targetImage.isEmpty()) return targetImage;
+  return app.getFileIcon(candidate.launchPath, { size: "large" });
 }
 
 /** 提取图标到 <data>/icons/<appId>.png，返回 appId -> 相对路径 */
@@ -147,17 +184,22 @@ export async function extractIcons(
       const candidate = candidates[index]!;
       const iconPath = join(iconsDir, `${candidate.id}.png`);
       try {
-        const sourceStat = statSync(candidate.launchPath);
+        let sourceMtime = statSync(candidate.targetPath).mtimeMs;
+        const iconSource = iconSourceOf(candidate);
+        if (iconSource !== candidate.targetPath) {
+          sourceMtime = Math.max(sourceMtime, statSync(iconSource).mtimeMs);
+        }
+
         let needsWrite = true;
         if (existsSync(iconPath)) {
           // eslint-disable-next-line no-await-in-loop -- 每个 worker 内串行处理，避免同时读大量图标
           const iconStat = await stat(iconPath);
-          needsWrite = iconStat.mtimeMs < sourceStat.mtimeMs;
+          needsWrite = iconStat.mtimeMs < sourceMtime;
         }
 
         if (needsWrite) {
           // eslint-disable-next-line no-await-in-loop -- 同上，worker 内按顺序取图标
-          const image = await app.getFileIcon(candidate.launchPath, { size: "large" });
+          const image = await loadIconImage(candidate);
           if (!image.isEmpty()) {
             // eslint-disable-next-line no-await-in-loop -- 同上，写完再处理下一个
             await writeFile(iconPath, image.toPNG());
