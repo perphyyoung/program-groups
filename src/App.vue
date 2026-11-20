@@ -3,7 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppCard from "./components/AppCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import { filterApps } from "./lib/app-filter";
-import type { AppView, AppViewFilter, GroupView, ScanProgress } from "./lib/types";
+import type {
+  AppView,
+  AppViewFilter,
+  GroupView,
+  IgnoredItem,
+  IgnoreReason,
+  ScanProgress,
+} from "./lib/types";
 
 type DialogState =
   | { kind: "create"; value: string }
@@ -13,6 +20,7 @@ type DialogState =
 const apps = ref<AppView[]>([]);
 const groups = ref<GroupView[]>([]);
 const missingCount = ref(0);
+const ignoredItems = ref<IgnoredItem[]>([]);
 const view = ref<AppViewFilter>({ kind: "ungrouped" });
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -29,20 +37,40 @@ const ungroupedCount = computed(
   () => apps.value.filter((item) => item.groupIds.length === 0).length,
 );
 const selectedCount = computed(() => selected.value.size);
+const ignoredCount = computed(() => ignoredItems.value.length);
 
 const viewApps = computed(() => filterApps(apps.value, view.value, ""));
 const filteredApps = computed(() => filterApps(apps.value, view.value, search.value));
+
+const filteredIgnored = computed(() => {
+  const keyword = search.value.trim().toLowerCase();
+  return ignoredItems.value
+    .filter(
+      (item) =>
+        !keyword ||
+        item.name.toLowerCase().includes(keyword) ||
+        item.target.toLowerCase().includes(keyword),
+    )
+    .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+});
+
+const headerCount = computed(() =>
+  view.value.kind === "ignored" ? filteredIgnored.value.length : viewApps.value.length,
+);
+const headerUnit = computed(() => (view.value.kind === "ignored" ? "项" : "个应用"));
 
 const currentTitle = computed(() => {
   const current = view.value;
   if (current.kind === "all") return "全部应用";
   if (current.kind === "ungrouped") return "未分组";
+  if (current.kind === "ignored") return "已忽略";
   return groups.value.find((group) => group.id === current.groupId)?.name ?? "分组";
 });
 
 const emptyText = computed(() => {
   if (search.value.trim()) return "没有匹配的应用";
   if (view.value.kind === "ungrouped") return "所有应用都已归类";
+  if (view.value.kind === "ignored") return "没有被忽略的应用";
   if (view.value.kind === "group") return "这个分组还没有应用，把应用拖进来";
   return "没有找到可启动的应用，点击刷新重试";
 });
@@ -69,6 +97,32 @@ function groupNamesOf(app: AppView): string[] {
     .filter((name): name is string => Boolean(name));
 }
 
+const REASON_LABELS: Record<IgnoreReason, string> = {
+  uninstall: "卸载入口",
+  help: "帮助/说明",
+  website: "官网/更新",
+  system: "系统工具",
+  installer: "安装程序",
+  duplicate: "重复快捷方式",
+  unreadable: "快捷方式无法解析",
+  "invalid-target": "目标不是可执行文件",
+  "missing-target": "目标文件不存在",
+  "invalid-name": "名称为空",
+};
+
+function reasonLabel(reason: IgnoreReason): string {
+  return REASON_LABELS[reason];
+}
+
+function firstChar(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+function selectView(next: AppViewFilter): void {
+  view.value = next;
+  clearSelection();
+}
+
 async function load(): Promise<void> {
   const data = await window.api.loadLibrary();
   apps.value = data.apps;
@@ -85,6 +139,7 @@ async function scan(): Promise<void> {
   scanText.value = "扫描中…";
   try {
     const summary = await window.api.scanLibrary();
+    ignoredItems.value = summary.ignoredItems;
     await load();
     showToast(
       `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}`,
@@ -248,9 +303,10 @@ onBeforeUnmount(() => {
         :groups="groups"
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
+        :ignored-count="ignoredCount"
         :active="view"
         :scanning="scanning"
-        @select="view = $event"
+        @select="selectView"
         @create="openCreate"
         @rename="openRename"
         @delete="openDelete"
@@ -261,7 +317,7 @@ onBeforeUnmount(() => {
         <header class="flex items-center gap-4 border-b border-white/10 px-5 py-3">
           <div class="min-w-0">
             <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
-            <p class="mt-0.5 text-xs text-slate-500">{{ viewApps.length }} 个应用</p>
+            <p class="mt-0.5 text-xs text-slate-500">{{ headerCount }} {{ headerUnit }}</p>
           </div>
           <div class="ml-auto flex items-center gap-2">
             <input
@@ -282,25 +338,62 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
-          <div
-            v-if="filteredApps.length > 0"
-            class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3"
-            @click.self="clearSelection"
-          >
-            <AppCard
-              v-for="app in filteredApps"
-              :key="app.id"
-              :app="app"
-              :selected="selected.has(app.id)"
-              :group-names="groupNamesOf(app)"
-              @select="onSelect(app, $event)"
-              @open="launch(app)"
-              @dragstart="onDragStart(app, $event)"
-            />
+          <div v-if="view.kind === 'ignored'" class="h-full">
+            <div
+              v-if="filteredIgnored.length > 0"
+              class="overflow-hidden rounded-xl border border-white/10"
+            >
+              <div
+                v-for="(item, index) in filteredIgnored"
+                :key="`${item.reason}-${index}`"
+                class="flex items-start gap-3 border-b border-white/5 px-4 py-3 last:border-b-0"
+              >
+                <div
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-sm font-semibold text-slate-300"
+                >
+                  {{ firstChar(item.name) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm text-slate-200">
+                    {{ item.name || "（无名称）" }}
+                  </div>
+                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
+                    {{ item.target || "（无目标）" }}
+                  </div>
+                </div>
+                <span
+                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
+                >
+                  {{ reasonLabel(item.reason) }}
+                </span>
+              </div>
+            </div>
+            <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
+              {{ emptyText }}
+            </div>
           </div>
-          <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
-            {{ emptyText }}
-          </div>
+
+          <template v-else>
+            <div
+              v-if="filteredApps.length > 0"
+              class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3"
+              @click.self="clearSelection"
+            >
+              <AppCard
+                v-for="app in filteredApps"
+                :key="app.id"
+                :app="app"
+                :selected="selected.has(app.id)"
+                :group-names="groupNamesOf(app)"
+                @select="onSelect(app, $event)"
+                @open="launch(app)"
+                @dragstart="onDragStart(app, $event)"
+              />
+            </div>
+            <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
+              {{ emptyText }}
+            </div>
+          </template>
         </div>
 
         <footer
@@ -314,7 +407,7 @@ onBeforeUnmount(() => {
         </footer>
 
         <div
-          v-if="selectedCount > 0"
+          v-if="selectedCount > 0 && view.kind !== 'ignored'"
           class="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4"
         >
           <div

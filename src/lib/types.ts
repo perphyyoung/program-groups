@@ -30,10 +30,29 @@ export interface LibraryData {
   missingCount: number;
 }
 
+export type IgnoreReason =
+  | "uninstall"
+  | "help"
+  | "website"
+  | "system"
+  | "installer"
+  | "duplicate"
+  | "unreadable"
+  | "invalid-target"
+  | "missing-target"
+  | "invalid-name";
+
+export interface IgnoredItem {
+  name: string;
+  target: string;
+  reason: IgnoreReason;
+}
+
 export interface ScanSummary {
   scanned: number;
   kept: number;
   ignored: number;
+  ignoredItems: IgnoredItem[];
   added: number;
   updated: number;
   missing: number;
@@ -48,4 +67,5 @@ export interface ScanProgress {
 export type AppViewFilter =
   | { kind: "all" }
   | { kind: "ungrouped" }
+  | { kind: "ignored" }
   | { kind: "group"; groupId: string };

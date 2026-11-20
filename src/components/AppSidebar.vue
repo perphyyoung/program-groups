@@ -5,6 +5,7 @@ defineProps<{
   groups: GroupView[];
   totalCount: number;
   ungroupedCount: number;
+  ignoredCount: number;
   active: AppViewFilter;
   scanning: boolean;
 }>();
@@ -78,6 +79,20 @@ function onDrop(event: DragEvent, groupId: string): void {
       >
         <span>未分组</span>
         <span class="text-xs text-slate-500">{{ ungroupedCount }}</span>
+      </button>
+
+      <button
+        aria-label="已忽略"
+        class="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition"
+        :class="
+          active.kind === 'ignored'
+            ? 'bg-indigo-500/15 text-indigo-200'
+            : 'text-slate-300 hover:bg-white/5'
+        "
+        @click="emit('select', { kind: 'ignored' })"
+      >
+        <span>已忽略</span>
+        <span class="text-xs text-slate-500">{{ ignoredCount }}</span>
       </button>
 
       <div class="mt-4 px-3 text-xs font-medium uppercase tracking-wide text-slate-600">分组</div>

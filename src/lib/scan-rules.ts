@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
+import type { IgnoreReason } from "./types";
 
 export interface ShortcutCandidate {
   id: string;
@@ -14,7 +15,10 @@ export interface ShortcutCandidate {
   relativePath: string;
 }
 
-export type ShortcutIgnoreReason = "uninstall" | "help" | "website" | "system" | "installer";
+export type ShortcutIgnoreReason = Extract<
+  IgnoreReason,
+  "uninstall" | "help" | "website" | "system" | "installer"
+>;
 
 const SYSTEM_DIRS = new Set([
   "windows 附件",

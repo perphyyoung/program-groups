@@ -10,13 +10,14 @@ import {
   pickBestShortcuts,
   type ShortcutCandidate,
 } from "../src/lib/scan-rules";
-import type { ScanProgress } from "../src/lib/types";
+import type { IgnoredItem, ScanProgress } from "../src/lib/types";
 import { log } from "./logger";
 
 export interface StartMenuScanResult {
   candidates: ShortcutCandidate[];
   scanned: number;
   ignored: number;
+  ignoredItems: IgnoredItem[];
 }
 
 export function startMenuRoots(): string[] {
@@ -73,13 +74,14 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
   const roots = startMenuRoots().filter((root) => existsSync(root));
   const links = roots.flatMap(collectShortcuts);
   const candidates: ShortcutCandidate[] = [];
-  let ignored = 0;
+  const ignoredItems: IgnoredItem[] = [];
 
   links.forEach((lnkPath, index) => {
     if (index % 20 === 0) {
       onProgress?.({ phase: "start-menu", done: index + 1, total: links.length });
     }
 
+    const name = cleanShortcutName(basename(lnkPath));
     let target = "";
     let shortcutArgs = "";
     let iconLocation: string | null = null;
@@ -90,30 +92,28 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
       shortcutArgs = details.args?.trim() ?? "";
       iconLocation = details.icon?.trim() || null;
       iconIndex = typeof details.iconIndex === "number" ? details.iconIndex : null;
-    } catch (error) {
-      ignored += 1;
-      log.debug(
-        `[scan] 无法解析快捷方式 ${lnkPath}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      ignoredItems.push({ name, target: "", reason: "unreadable" });
       return;
     }
 
-    if (!target || extname(target).toLowerCase() !== ".exe" || !existsSync(target)) {
-      ignored += 1;
+    if (!target || extname(target).toLowerCase() !== ".exe") {
+      ignoredItems.push({ name, target, reason: "invalid-target" });
       return;
     }
-
-    const name = cleanShortcutName(basename(lnkPath));
+    if (!existsSync(target)) {
+      ignoredItems.push({ name, target, reason: "missing-target" });
+      return;
+    }
     if (!name) {
-      ignored += 1;
+      ignoredItems.push({ name: "", target, reason: "invalid-name" });
       return;
     }
 
     const relativePath = relativeToRoot(lnkPath, roots);
     const ignoreReason = isIgnoredShortcut(name, target, shortcutArgs, relativePath);
     if (ignoreReason) {
-      ignored += 1;
-      log.debug(`[scan] 忽略 ${name} (${ignoreReason}): ${target}`);
+      ignoredItems.push({ name, target, reason: ignoreReason });
       return;
     }
 
@@ -133,10 +133,22 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
   });
 
   const picked = pickBestShortcuts(candidates);
+  const pickedSet = new Set(picked);
+  for (const candidate of candidates) {
+    if (!pickedSet.has(candidate)) {
+      ignoredItems.push({
+        name: candidate.name,
+        target: candidate.targetPath,
+        reason: "duplicate",
+      });
+    }
+  }
+
   return {
     candidates: picked,
     scanned: links.length,
-    ignored: ignored + (candidates.length - picked.length),
+    ignored: ignoredItems.length,
+    ignoredItems,
   };
 }
 

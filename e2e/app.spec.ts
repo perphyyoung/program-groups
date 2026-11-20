@@ -53,6 +53,7 @@ test.beforeAll(() => {
   scanDir = mkdtempSync(join(tmpdir(), "pg-e2e-scan-"));
   const target = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
   createShortcut(scanDir, "测试应用", target);
+  createShortcut(scanDir, "测试应用 帮助", target);
 });
 
 test.afterAll(async () => {
@@ -68,6 +69,14 @@ test("扫描、分组、多组与重启持久化", async () => {
   page = launched.page;
 
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
+  await expect(appCard).toBeVisible();
+
+  const ignoredNav = page.getByRole("button", { name: "已忽略", exact: true });
+  await expect(ignoredNav).toContainText("1");
+  await ignoredNav.click();
+  await expect(page.getByText("测试应用 帮助", { exact: true })).toBeVisible();
+  await expect(page.getByText("帮助/说明", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   await expect(appCard).toBeVisible();
 
   await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();

@@ -16,6 +16,7 @@ export function matchesSearch(app: AppView, keyword: string): boolean {
 export function inView(app: AppView, view: AppViewFilter): boolean {
   if (view.kind === "ungrouped") return app.groupIds.length === 0;
   if (view.kind === "group") return app.groupIds.includes(view.groupId);
+  if (view.kind === "ignored") return false;
   return true;
 }
 

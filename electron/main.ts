@@ -115,6 +115,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       scanned: result.scanned,
       kept: discovered.length,
       ignored: result.ignored,
+      ignoredItems: result.ignoredItems,
       ...reconciled,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
