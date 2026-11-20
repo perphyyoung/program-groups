@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
 import AppCard from "./components/AppCard.vue";
+import AppListRow from "./components/AppListRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
@@ -28,6 +29,7 @@ const ignoredItems = ref<IgnoredItem[]>([]);
 const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
 const view = ref<AppViewFilter>({ kind: "ungrouped" });
+const layout = ref<"list" | "grid">("list");
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
 const lastSelectedIndex = ref<number | null>(null);
@@ -369,6 +371,29 @@ onBeforeUnmount(() => {
               placeholder="搜索当前列表"
               class="h-8 w-56 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400/60"
             />
+            <div
+              v-if="view.kind !== 'ignored'"
+              role="group"
+              aria-label="显示方式"
+              class="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/5 p-0.5"
+            >
+              <button
+                type="button"
+                class="h-7 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200 aria-pressed:bg-indigo-500/20 aria-pressed:text-indigo-200"
+                :aria-pressed="layout === 'list'"
+                @click="layout = 'list'"
+              >
+                列表
+              </button>
+              <button
+                type="button"
+                class="h-7 rounded-md px-2 text-xs text-slate-400 transition hover:text-slate-200 aria-pressed:bg-indigo-500/20 aria-pressed:text-indigo-200"
+                :aria-pressed="layout === 'grid'"
+                @click="layout = 'grid'"
+              >
+                网格
+              </button>
+            </div>
             <button
               class="h-8 w-[68px] rounded-lg border border-white/10 bg-white/5 text-sm text-slate-300 transition hover:border-white/20 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="scanning"
@@ -439,11 +464,29 @@ onBeforeUnmount(() => {
 
           <template v-else>
             <div
-              v-if="filteredApps.length > 0"
+              v-if="filteredApps.length > 0 && layout === 'grid'"
+              data-testid="app-grid"
               class="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3 pt-5"
               @click.self="clearSelection"
             >
               <AppCard
+                v-for="app in filteredApps"
+                :key="app.id"
+                :app="app"
+                :selected="selected.has(app.id)"
+                :group-names="groupNamesOf(app)"
+                @select="onSelect(app, $event)"
+                @open="launch(app)"
+                @dragstart="onDragStart(app, $event)"
+              />
+            </div>
+            <div
+              v-else-if="filteredApps.length > 0"
+              data-testid="app-list"
+              class="flex flex-col gap-1.5 pt-5"
+              @click.self="clearSelection"
+            >
+              <AppListRow
                 v-for="app in filteredApps"
                 :key="app.id"
                 :app="app"
