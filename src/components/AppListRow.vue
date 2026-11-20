@@ -66,5 +66,7 @@ function firstChar(name: string): string {
         +{{ groupNames.length - 2 }}
       </span>
     </div>
+
+    <slot name="actions" />
   </div>
 </template>

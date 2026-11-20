@@ -10,11 +10,14 @@ import {
   deleteGroup,
   listActiveApps,
   listGroups,
+  listManualIgnoredIds,
   listMemberships,
+  manualIgnoreApp,
   openDatabase,
   reconcile,
   removeMembers,
   renameGroup,
+  restoreManualApp,
   type DiscoveredApp,
 } from "./db";
 
@@ -96,5 +99,20 @@ describe("database", () => {
     const group = createGroup("看图");
     renameGroup(group.id, "图像");
     expect(listGroups()[0]?.name).toBe("图像");
+  });
+
+  it("手动忽略：记录持久化，加入分组后自动恢复", () => {
+    reconcile([app("a", "看图王")], "2026-11-20T00:00:00.000Z");
+    const group = createGroup("看图");
+
+    manualIgnoreApp("a");
+    expect(listManualIgnoredIds().has("a")).toBe(true);
+
+    addMembers(["a"], group.id);
+    expect(listManualIgnoredIds().has("a")).toBe(false);
+
+    manualIgnoreApp("a");
+    restoreManualApp("a");
+    expect(listManualIgnoredIds().has("a")).toBe(false);
   });
 });

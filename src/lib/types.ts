@@ -26,6 +26,7 @@ export interface GroupEntry {
 
 export interface LibraryData {
   apps: AppEntry[];
+  manualIgnored: AppEntry[];
   groups: GroupEntry[];
   missingCount: number;
 }

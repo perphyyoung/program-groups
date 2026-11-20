@@ -10,6 +10,8 @@ export interface Api {
   addMembers(appIds: string[], groupId: string): Promise<void>;
   removeMembers(appIds: string[], groupId: string): Promise<void>;
   launchApp(appId: string): Promise<{ ok: boolean; error?: string }>;
+  manualIgnore(appId: string): Promise<void>;
+  manualRestore(appId: string): Promise<void>;
   revealShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
   onScanProgress(callback: (progress: ScanProgress) => void): () => void;
   log(level: string, message: string): Promise<void>;

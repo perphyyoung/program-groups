@@ -28,6 +28,8 @@ const missingCount = ref(0);
 const ignoredItems = ref<IgnoredItem[]>([]);
 const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
+const manualIgnored = ref<AppEntry[]>([]);
+const manualOpen = ref(true);
 const scope = ref<AppScope>({ kind: "ungrouped" });
 const includeIgnored = ref(false);
 const view = ref<"list" | "grid">("list");
@@ -50,7 +52,8 @@ const ungroupedCount = computed(
   () => apps.value.filter((item) => item.groupIds.length === 0).length,
 );
 const selectedCount = computed(() => selected.value.size);
-const ignoredCount = computed(() => ignoredItems.value.length);
+const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
+const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
 
 const filteredApps = computed(() => filterApps(apps.value, scope.value, search.value));
 
@@ -58,11 +61,30 @@ const ignoredGroups = computed(() =>
   groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value),
 );
 
+const manualIgnoredMatches = computed(() => {
+  const keyword = search.value.trim().toLowerCase();
+  return manualIgnored.value
+    .filter(
+      (app) =>
+        !keyword ||
+        app.name.toLowerCase().includes(keyword) ||
+        app.exePath.toLowerCase().includes(keyword),
+    )
+    .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+});
+
 /** 全部应用栏的已忽略项：只在勾选后参与展示与搜索，重复项不列入 */
 const ignoredMatches = computed(() =>
   includeIgnored.value && scope.value.kind === "all"
     ? filterIgnoredItems(ignoredItems.value, search.value)
     : [],
+);
+
+/** 全部应用栏勾选后展示的已忽略项总数：规则过滤项 + 手动忽略应用 */
+const allIgnoredTotal = computed(() =>
+  includeIgnored.value && scope.value.kind === "all"
+    ? ignoredMatches.value.length + manualIgnoredMatches.value.length
+    : 0,
 );
 
 const currentTitle = computed(() => {
@@ -124,6 +146,32 @@ async function revealShortcut(item: IgnoredItem): Promise<void> {
   if (!result.ok) showToast(`打开失败：${result.error ?? "未知错误"}`, "error");
 }
 
+async function manualIgnore(app: AppEntry): Promise<void> {
+  try {
+    await window.api.manualIgnore(app.id);
+    clearSelection();
+    await load();
+    showToast(`已手动忽略「${app.name}」`, "info");
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+async function restoreManual(app: AppEntry): Promise<void> {
+  try {
+    await window.api.manualRestore(app.id);
+    await load();
+    showToast(`已恢复「${app.name}」`, "info");
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+function onManualDragStart(app: AppEntry, event: DragEvent): void {
+  event.dataTransfer?.setData("application/x-pg-apps", JSON.stringify([app.id]));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+
 function firstChar(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?";
 }
@@ -140,6 +188,7 @@ function selectScope(next: AppScope): void {
 async function load(): Promise<void> {
   const data = await window.api.loadLibrary();
   apps.value = data.apps;
+  manualIgnored.value = data.manualIgnored;
   groups.value = data.groups;
   missingCount.value = data.missingCount;
   if (!targetGroupId.value || !data.groups.some((group) => group.id === targetGroupId.value)) {
@@ -258,9 +307,11 @@ async function removeFromCurrentGroup(): Promise<void> {
 
 async function onDropApps(groupId: string, appIds: string[]): Promise<void> {
   try {
+    const hadManual = appIds.some((id) => manualIgnoredIds.value.has(id));
     await window.api.addMembers(appIds, groupId);
     clearSelection();
-    await loadGroups();
+    if (hadManual) await load();
+    else await loadGroups();
     showToast(`已加入「${groupName(groupId)}」`, "info");
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -424,7 +475,39 @@ onBeforeUnmount(() => {
           class="min-h-0 flex-1 overflow-y-auto scroll-pt-12 px-5 pb-5"
         >
           <div v-if="scope.kind === 'ignored'" class="h-full">
-            <div v-if="ignoredGroups.length > 0" class="space-y-2 pt-5">
+            <div
+              v-if="ignoredGroups.length > 0 || manualIgnoredMatches.length > 0"
+              class="space-y-2 pt-5"
+            >
+              <AccordionSection
+                v-if="manualIgnoredMatches.length > 0"
+                title="手动忽略"
+                :count="manualIgnoredMatches.length"
+                :open="manualOpen"
+                @toggle="manualOpen = !manualOpen"
+              >
+                <div class="flex flex-col gap-1.5 p-2">
+                  <AppListRow
+                    v-for="app in manualIgnoredMatches"
+                    :key="app.id"
+                    :app="app"
+                    :selected="false"
+                    :group-names="groupNamesOf(app)"
+                    @dragstart="onManualDragStart(app, $event)"
+                  >
+                    <template #actions>
+                      <button
+                        type="button"
+                        class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+                        :aria-label="`取消忽略「${app.name}」`"
+                        @click.stop="restoreManual(app)"
+                      >
+                        取消忽略
+                      </button>
+                    </template>
+                  </AppListRow>
+                </div>
+              </AccordionSection>
               <AccordionSection
                 v-for="group in ignoredGroups"
                 :key="group.reason"
@@ -509,14 +592,61 @@ onBeforeUnmount(() => {
                 @select="onSelect(app, $event)"
                 @open="launch(app)"
                 @dragstart="onDragStart(app, $event)"
-              />
+              >
+                <template #actions>
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-200"
+                    :aria-label="`手动忽略「${app.name}」`"
+                    @click.stop="manualIgnore(app)"
+                  >
+                    忽略
+                  </button>
+                </template>
+              </AppListRow>
             </div>
             <section
-              v-if="ignoredMatches.length > 0"
+              v-if="allIgnoredTotal > 0"
               data-testid="all-ignored"
               class="mt-5 overflow-hidden rounded-xl border border-white/10"
             >
               <div class="border-b border-white/5 px-4 py-2 text-xs text-slate-500">已忽略项</div>
+              <div
+                v-for="app in manualIgnoredMatches"
+                :key="app.id"
+                class="flex items-center gap-3 border-b border-white/5 px-4 py-2.5"
+              >
+                <div
+                  class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/5 text-xs font-semibold text-slate-300"
+                >
+                  <img
+                    v-if="app.iconUrl"
+                    :src="app.iconUrl"
+                    :alt="app.name"
+                    class="h-6 w-6 object-contain"
+                  />
+                  <template v-else>{{ firstChar(app.name) }}</template>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm text-slate-200">{{ app.name }}</div>
+                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="app.exePath">
+                    {{ app.exePath }}
+                  </div>
+                </div>
+                <span
+                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
+                >
+                  手动忽略
+                </span>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+                  :aria-label="`取消忽略「${app.name}」`"
+                  @click="restoreManual(app)"
+                >
+                  取消忽略
+                </button>
+              </div>
               <div
                 v-for="item in ignoredMatches"
                 :key="item.shortcutPath"
@@ -549,7 +679,7 @@ onBeforeUnmount(() => {
               </div>
             </section>
             <div
-              v-if="filteredApps.length === 0 && ignoredMatches.length === 0"
+              v-if="filteredApps.length === 0 && allIgnoredTotal === 0"
               class="flex h-full items-center justify-center text-sm text-slate-500"
             >
               {{ emptyText }}

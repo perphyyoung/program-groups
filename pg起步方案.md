@@ -105,6 +105,11 @@ CREATE TABLE app_groups (
   PRIMARY KEY (app_id, group_id)
 );
 
+CREATE TABLE manual_ignores (
+  app_id     TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX idx_apps_status ON apps(status);
 CREATE INDEX idx_apps_name ON apps(name);
 CREATE INDEX idx_app_groups_group ON app_groups(group_id);
@@ -180,7 +185,8 @@ MVP 只扫描开始菜单，因此：
 - 「已忽略」按原因折叠分组，组头显示数量；默认折叠，搜索时命中组自动展开。
 - 折叠组头吸顶，展开后向下滚动仍可随时收起；滚动容器设置 `scroll-padding-top`，聚焦行不被遮挡。
 - 重复快捷方式不进入侧栏计数，但作为独立分组「重复快捷方式」排在最后，标注已收录为哪个应用；每行可「打开位置」定位 `.lnk`，由用户自行决定是否删除。
-- 全部应用栏提供「包含已忽略项」复选框，默认不勾选；勾选后在应用列表下方追加只读已忽略项并参与搜索，重复快捷方式不列入。
+- 全部应用栏提供「包含已忽略项」复选框，默认不勾选；勾选后在应用列表下方追加已忽略项（含手动忽略应用）并参与搜索，规则项只读、手动忽略可取消，重复快捷方式不列入。
+- 列表视图行尾提供「手动忽略」：应用从各栏收起，已忽略栏顶部出现「手动忽略」组；状态落库，拖入分组时自动恢复。
 - 「未分组」不可删除、不可改名；它是查询结果，不是数据。
 - 归组后计数实时减少；全部归完显示空态「所有应用都已归类」。
 
@@ -256,16 +262,18 @@ MVP 只扫描开始菜单，因此：
 
 | 通道 | 入参 | 返回 |
 | --- | --- | --- |
-| `library:load` | — | `{ apps: AppView[]; groups: GroupView[]; missingCount: number }`（`apps` 只含 active） |
-| `library:groups` | — | `{ groups: GroupView[]; memberships: MembershipView[] }`（分组变更后只刷新这部分） |
+| `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number }`（`apps` 只含 active 且未手动忽略） |
+| `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分） |
 | `library:scan` | — | `ScanSummary` |
-| `groups:create` | `name` | `GroupView` |
+| `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
 | `groups:delete` | `id` | `void` |
 | `memberships:add` | `appIds, groupId` | `void` |
 | `memberships:remove` | `appIds, groupId` | `void` |
 | `apps:launch` | `appId` | `{ ok: boolean; error?: string }` |
 | `apps:revealShortcut` | `.lnk` 绝对路径 | `{ ok: boolean; error?: string }`，校验位于开始菜单根目录后定位文件 |
+| `apps:manualIgnore` | `appId` | `void`，写入 `manual_ignores` |
+| `apps:manualRestore` | `appId` | `void`，删除手动忽略记录 |
 | `log:renderer` | `level, message` | `void` |
 
 主进程 → 渲染进程事件：
@@ -328,6 +336,7 @@ MVP 只扫描开始菜单，因此：
 - 所有新应用默认在「未分组」，计数等于应用总数。
 - 应用默认以列表展示，可切换为网格；「已忽略」视图不显示切换入口。
 - 全部应用栏勾选「包含已忽略项」后，应用列表下方出现只读已忽略项并参与搜索；默认不勾选，重复快捷方式不出现。
+- 手动忽略只出现在列表视图；应用收起后重启仍保留，拖入分组或点「取消忽略」后恢复。
 - 新建「看图」「常用」，把同一个看图软件加入两组；两个组都显示它，未分组计数减 1。
 - 从「看图」移除该应用，它仍在「常用」；两组计数正确。
 - 删除「常用」组，应用仍在「看图」，且不触发任何卸载或文件删除。
@@ -434,6 +443,7 @@ MVP 已实现，并通过质量门与 e2e。
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组、移出分组
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加只读条目并参与搜索；默认不加载，重复项不列入
+- 手动忽略：列表视图行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复
 - 帮助/更新/卸载规则区分产品名与功能入口；重复快捷方式单独计数
 - 图标缓存优化：`pg-icon://` 协议、扫描无变化跳过二次刷新、失败负缓存、`.lnk` mtime 失效判断
 - 扫描状态：右下角进度卡片显示阶段与进度条，扫描结束后底部居中显示结果提示；刷新按钮固定宽度、扫描期间禁用

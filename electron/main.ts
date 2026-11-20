@@ -21,12 +21,15 @@ import {
   groupExists,
   listActiveApps,
   listGroups,
+  listManualIgnoredIds,
   listMemberships,
+  manualIgnoreApp,
   markAppMissing,
   openDatabase,
   reconcile,
   removeMembers,
   renameGroup,
+  restoreManualApp,
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
@@ -80,7 +83,10 @@ interface GroupData {
   groupIdsByApp: Map<string, string[]>;
 }
 
-function loadGroupData(apps: AppRecord[]): GroupData {
+function loadGroupData(
+  apps: AppRecord[],
+  countIds: Set<string> = new Set(apps.map((item) => item.id)),
+): GroupData {
   const activeIds = new Set(apps.map((item) => item.id));
   const memberships = listMemberships().filter((membership) => activeIds.has(membership.appId));
   const groupIdsByApp = new Map<string, string[]>();
@@ -90,7 +96,9 @@ function loadGroupData(apps: AppRecord[]): GroupData {
     const ids = groupIdsByApp.get(membership.appId) ?? [];
     ids.push(membership.groupId);
     groupIdsByApp.set(membership.appId, ids);
-    countsByGroup.set(membership.groupId, (countsByGroup.get(membership.groupId) ?? 0) + 1);
+    if (countIds.has(membership.appId)) {
+      countsByGroup.set(membership.groupId, (countsByGroup.get(membership.groupId) ?? 0) + 1);
+    }
   }
 
   const groups = listGroups().map((group) => ({
@@ -103,10 +111,8 @@ function loadGroupData(apps: AppRecord[]): GroupData {
   return { groups, memberships, groupIdsByApp };
 }
 
-function loadLibrary(): LibraryData {
-  const apps = listActiveApps();
-  const { groups, groupIdsByApp } = loadGroupData(apps);
-  const appEntries: AppEntry[] = apps.map((item) => ({
+function toEntry(item: AppRecord, groupIdsByApp: Map<string, string[]>): AppEntry {
+  return {
     id: item.id,
     name: item.name,
     launchPath: item.launchPath,
@@ -118,14 +124,31 @@ function loadLibrary(): LibraryData {
     lastSeenAt: item.lastSeenAt,
     groupIds: groupIdsByApp.get(item.id) ?? [],
     iconUrl: iconUrl(item.id, item.iconFile),
-  }));
+  };
+}
 
-  return { apps: appEntries, groups, missingCount: countMissing() };
+function loadLibrary(): LibraryData {
+  const active = listActiveApps();
+  const manualIds = listManualIgnoredIds();
+  const visible = active.filter((item) => !manualIds.has(item.id));
+  const hidden = active.filter((item) => manualIds.has(item.id));
+  const { groups, groupIdsByApp } = loadGroupData(active, new Set(visible.map((item) => item.id)));
+
+  return {
+    apps: visible.map((item) => toEntry(item, groupIdsByApp)),
+    manualIgnored: hidden.map((item) => toEntry(item, groupIdsByApp)),
+    groups,
+    missingCount: countMissing(),
+  };
 }
 
 function loadGroups(): GroupsData {
-  const apps = listActiveApps();
-  const { groups, memberships } = loadGroupData(apps);
+  const active = listActiveApps();
+  const manualIds = listManualIgnoredIds();
+  const visibleIds = new Set(
+    active.filter((item) => !manualIds.has(item.id)).map((item) => item.id),
+  );
+  const { groups, memberships } = loadGroupData(active, visibleIds);
   return { groups, memberships };
 }
 
@@ -274,6 +297,18 @@ ipcMain.handle("apps:launch", (_event, appId: unknown) =>
     const error = await shell.openPath(appRecord.launchPath);
     if (error) return { ok: false, error };
     return { ok: true };
+  }),
+);
+
+ipcMain.handle("apps:manualIgnore", (_event, appId: unknown) =>
+  handleIpc("apps:manualIgnore", () => {
+    manualIgnoreApp(assertId(appId));
+  }),
+);
+
+ipcMain.handle("apps:manualRestore", (_event, appId: unknown) =>
+  handleIpc("apps:manualRestore", () => {
+    restoreManualApp(assertId(appId));
   }),
 );
 

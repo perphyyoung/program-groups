@@ -77,6 +77,11 @@ CREATE TABLE IF NOT EXISTS app_groups (
   PRIMARY KEY (app_id, group_id)
 );
 
+CREATE TABLE IF NOT EXISTS manual_ignores (
+  app_id     TEXT PRIMARY KEY REFERENCES apps(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_apps_status ON apps(status);
 CREATE INDEX IF NOT EXISTS idx_apps_name ON apps(name);
 CREATE INDEX IF NOT EXISTS idx_app_groups_group ON app_groups(group_id);
@@ -159,6 +164,24 @@ export function countMissing(): number {
     .prepare("SELECT COUNT(*) AS count FROM apps WHERE status = 'missing'")
     .get() as unknown as { count: number };
   return row.count;
+}
+
+export function listManualIgnoredIds(): Set<string> {
+  const rows = requireDb().prepare("SELECT app_id FROM manual_ignores").all() as unknown as {
+    app_id: string;
+  }[];
+  return new Set(rows.map((row) => row.app_id));
+}
+
+export function manualIgnoreApp(appId: string): void {
+  if (!getApp(appId)) throw new Error("应用不存在");
+  requireDb()
+    .prepare("INSERT OR IGNORE INTO manual_ignores (app_id, created_at) VALUES (?, ?)")
+    .run(appId, new Date().toISOString());
+}
+
+export function restoreManualApp(appId: string): void {
+  requireDb().prepare("DELETE FROM manual_ignores WHERE app_id = ?").run(appId);
 }
 
 export function getApp(id: string): AppRecord | null {
@@ -288,9 +311,13 @@ export function addMembers(appIds: string[], groupId: string): void {
   const insert = database.prepare(
     "INSERT OR IGNORE INTO app_groups (app_id, group_id, created_at) VALUES (?, ?, ?)",
   );
+  const clearManual = database.prepare("DELETE FROM manual_ignores WHERE app_id = ?");
   database.exec("BEGIN");
   try {
-    for (const appId of appIds) insert.run(appId, groupId, createdAt);
+    for (const appId of appIds) {
+      insert.run(appId, groupId, createdAt);
+      clearManual.run(appId);
+    }
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
