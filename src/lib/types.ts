@@ -36,7 +36,6 @@ export type IgnoreReason =
   | "website"
   | "system"
   | "installer"
-  | "duplicate"
   | "unreadable"
   | "invalid-target"
   | "missing-target"
@@ -53,6 +52,7 @@ export interface ScanSummary {
   kept: number;
   ignored: number;
   ignoredItems: IgnoredItem[];
+  duplicate: number;
   added: number;
   updated: number;
   missing: number;

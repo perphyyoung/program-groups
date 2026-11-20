@@ -148,35 +148,10 @@ MVP 只扫描开始菜单，因此：
 
 - 根目录：`%APPDATA%\Microsoft\Windows\Start Menu\Programs`、`%ProgramData%\Microsoft\Windows\Start Menu\Programs`。
 - 递归查找 `.lnk`；跳过 `Startup` 目录。
-- 用 `shell.readShortcutLink()` 解析目标：
-  - 目标必须是存在的 `.exe`，否则丢弃；
-  - 目标在 `C:\Windows\`、`C:\Windows\Installer\` 下的，保留启动能力，但名称命中系统工具规则时过滤；
-  - `.lnk` 指向 URL、文件夹、文档、`.chm` 的一律丢弃。
-- 名称取 `.lnk` 文件名，去掉「 - 快捷方式」后缀，trim。
-- 去重键：规范化后的 `target` 路径（小写、统一分隔符、去掉 `\\?\` 前缀）。同一目标有多个快捷方式时，按「开始菜单相对路径长度 + 名称」稳定排序取第一个。
+- 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
+- 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing }`，界面底部显示「新增 N · 忽略 M · 重复 D · 缺失 K」。
 
-过滤规则（命中即忽略，不落库）：
-
-| 类型 | 规则 |
-| --- | --- |
-| 卸载项 | 目标文件名匹配 `unins000.exe`、`uninstall.exe`、`uninstall_*.exe`，或 `msiexec.exe` 带 `/x`；不按名称子串判断，避免误伤 Wise Program Uninstaller 这类产品 |
-| 帮助/文档 | 名称包含 `help`、`readme`、`说明`、`文档`、`教程`、`manual`、`documentation` |
-| 网址/更新 | 名称包含 `website`、`官网`、`update`、`更新`、`repair`、`修复` |
-| 系统工具 | 位于「Windows 附件 / 管理工具 / 系统工具 / 辅助工具 / Windows PowerShell」等系统目录下 |
-| 安装器 | 目标文件名匹配 `setup*.exe`、`install*.exe`、`update*.exe` |
-| 重复项 | 规范化目标路径已收录 |
-
-扫描统计返回：`{ scanned, kept, ignored, added, updated, missing }`，界面底部显示「新增 N · 忽略 M · 缺失 K」，让用户知道过滤发生过，而不是以为软件丢了。
-
-### 4.3 稳定 ID 与去重
-
-- 主键 = `sha1(规范化 exe_path).slice(0, 16)`。
-- 只有 `.lnk` 无法解析出 exe 目标时不入库，因此 MVP 不存在「无 exe 的应用」。
-- 规范化：`path.resolve` → 小写 → 统一 `\` → 去掉 `\\?\` 前缀。
-- 不用显示名当主键：版本、语言、重命名都会变。
-- 不用 `fs.realpath`：慢，且 junction/符号链接在 Windows 上容易踩坑；同一 exe 的多个快捷方式已由目标路径去重。
-
-### 4.4 图标
+### 4.3 图标
 
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
 - 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/<appId>.png`。
@@ -184,7 +159,7 @@ MVP 只扫描开始菜单，因此：
 - 并发 8；单个失败只记日志，界面回退为首字母色块。
 - 不在 SQLite 里存 BLOB。
 
-### 4.5 增量与缺失
+### 4.4 增量与缺失
 
 - 每次扫描记录本轮 `scanStartedAt`。
 - 本轮出现的应用：`INSERT OR UPDATE`，`status = 'active'`，更新 `last_seen_at`。
@@ -199,7 +174,8 @@ MVP 只扫描开始菜单，因此：
 
 - 首次扫描完成后，所有应用默认没有归属，全部出现在「未分组」。
 - 侧栏固定显示「全部应用」「未分组 N」「已忽略 N」，其下是用户分组。
-- 「已忽略」与「未分组」平级，不参与归组；只展示最近一次扫描被过滤的项与原因，不计入未分组数量。
+- 「已忽略」与「未分组」平级，不参与归组；只展示最近一次扫描被规则过滤的项与原因，不计入未分组数量。
+- 重复快捷方式不进入「已忽略」，单独计数；标题下提示「另有 N 个重复快捷方式，应用已收录」。
 - 「未分组」不可删除、不可改名；它是查询结果，不是数据。
 - 归组后计数实时减少；全部归完显示空态「所有应用都已归类」。
 
@@ -364,8 +340,8 @@ MVP 只扫描开始菜单，因此：
 | D11 | 分组排序 | 按创建顺序，不做拖拽排序；分组内按名称 | 2026-11-20 |
 | D12 | 注册表扫描 | MVP 不做，只扫开始菜单；后续再加，避免不可启动项与编码/解析复杂度 | 2026-11-20 |
 | D13 | 分组图标 / 颜色 | MVP 不做，只显示名称与计数 | 2026-11-20 |
-| D14 | 卸载项过滤 | 按目标 exe 精确模式 + `msiexec /x` 判断，不按名称子串；避免误伤产品名带 Uninstaller 的应用 | 2026-11-20 |
-| D15 | 已忽略视图 | 与「未分组」平级；忽略项不落库，只来自最近一次扫描结果，展示名称、目标与原因 | 2026-11-20 |
+| D14 | 卸载项过滤 | 详见 [算法设计.md](./算法设计.md)，本文不重复判断逻辑 | 2026-11-20 |
+| D15 | 已忽略视图 | 与「未分组」平级；忽略项不落库，只来自最近一次扫描结果，展示名称、目标与原因；重复项单独计数 | 2026-11-20 |
 
 ## 12. 落地已知坑
 
@@ -374,8 +350,7 @@ MVP 只扫描开始菜单，因此：
 - Electron 45 不再通过 postinstall 下载二进制；`node_modules/electron/dist` 缺失时执行 `pnpm exec install-electron`，国内加 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/`。
 - Playwright 启动 Electron 用 `args: ["."]`，不要传 `out/main/main.js`，否则 `app.getAppPath()` 指向错误目录、preload 拼接失败。
 - MSI 的 advertised shortcut 目标可能落在 `C:\Windows\Installer\` 下，这是正常的；不要因此丢弃，启动仍用 `.lnk`。
-- 卸载项不要按名称子串判断：产品名可能包含 Uninstaller（Wise Program Uninstaller、Uninstall Tool）；按目标 exe 精确模式和 `msiexec /x` 参数判断。
-- 同一 exe 有多个快捷方式时，按「开始菜单相对路径长度 + 名称」稳定排序取第一个，避免每次扫描名称/图标抖动。
+- 已忽略与去重的判断边界见 [算法设计.md](./算法设计.md)，这里只记录落地坑，不重复规则。
 - `app.getFileIcon` 必须在 `app.whenReady()` 后调用；图标失败只记日志，不阻断扫描。
 - renderer 不能 import 任何 `node:` 模块；搜索、计数、名称清理等纯函数放 `src/lib`，主进程与渲染进程共用。
 - 精简系统可能没有公共开始菜单目录；目录不存在时跳过并记 info 日志，不报错。
@@ -429,11 +404,11 @@ MVP 已实现，并通过质量门与 e2e。
 
 验证结果：
 
-- `pnpm test`：12 条通过（3 个文件）
+- `pnpm test`：13 条通过（3 个文件）
 - `pnpm check`：format / oxlint / eslint / type-check / test / build 全绿，0 warning
 - `pnpm e2e`：1 条通过（开始菜单扫描、建组、多组归属、重启持久化）
 - `pnpm release`：打出 `release/Program Groups Setup 0.1.0.exe`
-- 本机开始菜单实测：359 个快捷方式，保留 193 个，过滤 166 个；修复卸载项误伤后 Wise Program Uninstaller 正常出现
+- 本机开始菜单实测：359 个快捷方式，保留 191 个，忽略 136 个，重复 32 个；金山文档、微信输入法恢复，四个产品自定义卸载入口被过滤
 
 已实现：
 
@@ -441,6 +416,7 @@ MVP 已实现，并通过质量门与 e2e。
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组、移出分组
 - 已忽略视图：与未分组平级，展示名称、目标路径与忽略原因，支持搜索
+- 帮助/更新/卸载规则区分产品名与功能入口；重复快捷方式单独计数
 - 搜索、启动、空态、轻提示
 - dev / e2e 数据隔离与 electron-log 日志
 

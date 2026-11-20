@@ -116,12 +116,13 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       kept: discovered.length,
       ignored: result.ignored,
       ignoredItems: result.ignoredItems,
+      duplicate: result.duplicate,
       ...reconciled,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} ignored=${summary.ignored} ` +
-        `added=${summary.added} missing=${summary.missing}`,
+        `duplicate=${summary.duplicate} added=${summary.added} missing=${summary.missing}`,
     );
     return summary;
   } finally {

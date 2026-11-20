@@ -54,6 +54,7 @@ test.beforeAll(() => {
   const target = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
   createShortcut(scanDir, "测试应用", target);
   createShortcut(scanDir, "测试应用 帮助", target);
+  createShortcut(scanDir, "测试应用 副本", target);
 });
 
 test.afterAll(async () => {
@@ -76,6 +77,7 @@ test("扫描、分组、多组与重启持久化", async () => {
   await ignoredNav.click();
   await expect(page.getByText("测试应用 帮助", { exact: true })).toBeVisible();
   await expect(page.getByText("帮助/说明", { exact: true })).toBeVisible();
+  await expect(page.getByText("另有 1 个重复快捷方式，应用已收录", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "未分组", exact: true }).click();
   await expect(appCard).toBeVisible();
 

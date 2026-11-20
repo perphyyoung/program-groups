@@ -18,6 +18,7 @@ export interface StartMenuScanResult {
   scanned: number;
   ignored: number;
   ignoredItems: IgnoredItem[];
+  duplicate: number;
 }
 
 export function startMenuRoots(): string[] {
@@ -134,14 +135,9 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
 
   const picked = pickBestShortcuts(candidates);
   const pickedSet = new Set(picked);
+  let duplicate = 0;
   for (const candidate of candidates) {
-    if (!pickedSet.has(candidate)) {
-      ignoredItems.push({
-        name: candidate.name,
-        target: candidate.targetPath,
-        reason: "duplicate",
-      });
-    }
+    if (!pickedSet.has(candidate)) duplicate += 1;
   }
 
   return {
@@ -149,6 +145,7 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
     scanned: links.length,
     ignored: ignoredItems.length,
     ignoredItems,
+    duplicate,
   };
 }
 

@@ -21,6 +21,7 @@ const apps = ref<AppView[]>([]);
 const groups = ref<GroupView[]>([]);
 const missingCount = ref(0);
 const ignoredItems = ref<IgnoredItem[]>([]);
+const duplicateCount = ref(0);
 const view = ref<AppViewFilter>({ kind: "ungrouped" });
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -103,7 +104,6 @@ const REASON_LABELS: Record<IgnoreReason, string> = {
   website: "官网/更新",
   system: "系统工具",
   installer: "安装程序",
-  duplicate: "重复快捷方式",
   unreadable: "快捷方式无法解析",
   "invalid-target": "目标不是可执行文件",
   "missing-target": "目标文件不存在",
@@ -140,9 +140,10 @@ async function scan(): Promise<void> {
   try {
     const summary = await window.api.scanLibrary();
     ignoredItems.value = summary.ignoredItems;
+    duplicateCount.value = summary.duplicate;
     await load();
     showToast(
-      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}`,
+      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
       "info",
     );
   } catch (error) {
@@ -318,6 +319,12 @@ onBeforeUnmount(() => {
           <div class="min-w-0">
             <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
             <p class="mt-0.5 text-xs text-slate-500">{{ headerCount }} {{ headerUnit }}</p>
+            <p
+              v-if="view.kind === 'ignored' && duplicateCount > 0"
+              class="mt-1 text-xs text-slate-600"
+            >
+              另有 {{ duplicateCount }} 个重复快捷方式，应用已收录
+            </p>
           </div>
           <div class="ml-auto flex items-center gap-2">
             <input
