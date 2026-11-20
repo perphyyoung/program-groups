@@ -1,7 +1,8 @@
-import type { LibraryData, ScanProgress, ScanSummary } from "../lib/types";
+import type { GroupsData, LibraryData, ScanProgress, ScanSummary } from "../lib/types";
 
 export interface Api {
   loadLibrary(): Promise<LibraryData>;
+  loadGroups(): Promise<GroupsData>;
   scanLibrary(): Promise<ScanSummary>;
   createGroup(name: string): Promise<{ id: string; name: string; sort: number }>;
   renameGroup(id: string, name: string): Promise<void>;

@@ -149,14 +149,16 @@ MVP 只扫描开始菜单，因此：
 - 根目录：`%APPDATA%\Microsoft\Windows\Start Menu\Programs`、`%ProgramData%\Microsoft\Windows\Start Menu\Programs`。
 - 递归查找 `.lnk`；跳过 `Startup` 目录。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
-- 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing }`，界面底部显示「新增 N · 忽略 M · 重复 D · 缺失 K」。
+- 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`，界面底部显示「新增 N · 忽略 M · 重复 D · 缺失 K」。
 
 ### 4.3 图标
 
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
 - 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/<appId>.png`。
-- 图标缓存按目标 exe / IconLocation 的 mtime 判断；`icons` 目录是缓存，可随时删除重建。
-- 并发 8；单个失败只记日志，界面回退为首字母色块。
+- 图标通过 `pg-icon://<appId>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
+- 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
+- 提取失败写 `icons/<appId>.miss`，源文件不变时不重试；成功后正常写 PNG。
+- 并发 8；扫描进度显示「检查图标 N/N（缓存 X，提取 Y）」。
 - 不在 SQLite 里存 BLOB。
 
 ### 4.4 增量与缺失
@@ -406,9 +408,10 @@ MVP 已实现，并通过质量门与 e2e。
 
 - `pnpm test`：13 条通过（3 个文件）
 - `pnpm check`：format / oxlint / eslint / type-check / test / build 全绿，0 warning
-- `pnpm e2e`：1 条通过（开始菜单扫描、建组、多组归属、重启持久化）
+- `pnpm e2e`：1 条通过（开始菜单扫描、建组、多组归属、重启持久化、`pg-icon://` 图标加载）
 - `pnpm release`：打出 `release/Program Groups Setup 0.1.0.exe`
 - 本机开始菜单实测：359 个快捷方式，保留 191 个，忽略 136 个，重复 32 个；金山文档、微信输入法恢复，四个产品自定义卸载入口被过滤
+- 图标缓存实测：第二次启动 `icons=0/191`，没有重新解析图标
 
 已实现：
 
@@ -417,6 +420,7 @@ MVP 已实现，并通过质量门与 e2e。
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组、移出分组
 - 已忽略视图：与未分组平级，展示名称、目标路径与忽略原因，支持搜索
 - 帮助/更新/卸载规则区分产品名与功能入口；重复快捷方式单独计数
+- 图标缓存优化：`pg-icon://` 协议、扫描无变化跳过二次刷新、失败负缓存、`.lnk` mtime 失效判断
 - 搜索、启动、空态、轻提示
 - dev / e2e 数据隔离与 electron-log 日志
 

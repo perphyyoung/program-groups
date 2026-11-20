@@ -71,6 +71,11 @@ test("扫描、分组、多组与重启持久化", async () => {
 
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();
+  const appIcon = page.getByRole("img", { name: "测试应用", exact: true });
+  await expect(appIcon).toHaveAttribute("src", /^pg-icon:\/\//u);
+  await expect
+    .poll(() => appIcon.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
 
   const ignoredNav = page.getByRole("button", { name: "已忽略", exact: true });
   await expect(ignoredNav).toContainText("1");

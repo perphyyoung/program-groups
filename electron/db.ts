@@ -172,16 +172,30 @@ export function markAppMissing(id: string): void {
   requireDb().prepare("UPDATE apps SET status = 'missing' WHERE id = ?").run(id);
 }
 
+function hasAppChanged(current: AppDbRow | undefined, app: DiscoveredApp): boolean {
+  if (!current || current.status !== "active") return true;
+  if (
+    current.name !== app.name ||
+    current.launch_path !== app.launchPath ||
+    current.launch_kind !== app.launchKind ||
+    current.exe_path !== app.exePath
+  ) {
+    return true;
+  }
+  return app.iconFile !== null && current.icon_file !== app.iconFile;
+}
+
 /** 扫描结果与库内状态对账：新增、更新、标记缺失；不删除任何应用与归属 */
 export function reconcile(
   discovered: DiscoveredApp[],
   scanStartedAt: string,
-): Pick<ScanSummary, "added" | "updated" | "missing"> {
+): Pick<ScanSummary, "added" | "updated" | "missing" | "changed"> {
   const database = requireDb();
-  const existing = new Set(
-    (database.prepare("SELECT id FROM apps").all() as unknown as Array<{ id: string }>).map(
-      (row) => row.id,
-    ),
+  const existing = new Map(
+    (database.prepare("SELECT * FROM apps").all() as unknown as AppDbRow[]).map((row) => [
+      row.id,
+      row,
+    ]),
   );
 
   const upsert = database.prepare(`
@@ -200,10 +214,17 @@ export function reconcile(
   `);
 
   let added = 0;
+  let changed = false;
   database.exec("BEGIN");
   try {
     for (const app of discovered) {
-      if (!existing.has(app.id)) added += 1;
+      const current = existing.get(app.id);
+      if (!current) {
+        added += 1;
+        changed = true;
+      } else if (hasAppChanged(current, app)) {
+        changed = true;
+      }
       upsert.run(
         app.id,
         app.name,
@@ -218,11 +239,14 @@ export function reconcile(
     const missingResult = database
       .prepare("UPDATE apps SET status = 'missing' WHERE status = 'active' AND last_seen_at < ?")
       .run(scanStartedAt);
+    const missing = Number(missingResult.changes);
+    if (missing > 0) changed = true;
     database.exec("COMMIT");
     return {
       added,
       updated: discovered.length - added,
-      missing: Number(missingResult.changes),
+      missing,
+      changed,
     };
   } catch (error) {
     database.exec("ROLLBACK");

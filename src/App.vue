@@ -133,6 +133,21 @@ async function load(): Promise<void> {
   }
 }
 
+async function loadGroups(): Promise<void> {
+  const data = await window.api.loadGroups();
+  groups.value = data.groups;
+  const groupIdsByApp = new Map<string, string[]>();
+  for (const membership of data.memberships) {
+    const ids = groupIdsByApp.get(membership.appId) ?? [];
+    ids.push(membership.groupId);
+    groupIdsByApp.set(membership.appId, ids);
+  }
+  apps.value = apps.value.map((app) => {
+    app.groupIds = groupIdsByApp.get(app.id) ?? [];
+    return app;
+  });
+}
+
 async function scan(): Promise<void> {
   if (scanning.value) return;
   scanning.value = true;
@@ -141,7 +156,7 @@ async function scan(): Promise<void> {
     const summary = await window.api.scanLibrary();
     ignoredItems.value = summary.ignoredItems;
     duplicateCount.value = summary.duplicate;
-    await load();
+    if (summary.changed) await load();
     showToast(
       `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
       "info",
@@ -158,7 +173,7 @@ function onScanProgress(progress: ScanProgress): void {
   if (progress.phase === "start-menu") {
     scanText.value = `扫描开始菜单 ${progress.done}/${progress.total}`;
   } else if (progress.phase === "icons") {
-    scanText.value = `提取图标 ${progress.done}/${progress.total}`;
+    scanText.value = `检查图标 ${progress.done}/${progress.total}（缓存 ${progress.cached ?? 0}，提取 ${progress.extracted ?? 0}）`;
   } else {
     scanText.value = "整理完成";
   }
@@ -206,7 +221,7 @@ async function assignTo(groupId: string): Promise<void> {
     await window.api.addMembers(Array.from(selected.value), groupId);
     const name = groupName(groupId);
     clearSelection();
-    await load();
+    await loadGroups();
     showToast(`已加入「${name}」`, "info");
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -218,7 +233,7 @@ async function removeFromCurrentGroup(): Promise<void> {
   try {
     await window.api.removeMembers(Array.from(selected.value), view.value.groupId);
     clearSelection();
-    await load();
+    await loadGroups();
     showToast("已移出分组", "info");
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -229,7 +244,7 @@ async function onDropApps(groupId: string, appIds: string[]): Promise<void> {
   try {
     await window.api.addMembers(appIds, groupId);
     clearSelection();
-    await load();
+    await loadGroups();
     showToast(`已加入「${groupName(groupId)}」`, "info");
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -261,18 +276,18 @@ async function submitDialog(): Promise<void> {
   try {
     if (current.kind === "create") {
       const created = await window.api.createGroup(current.value);
-      await load();
+      await loadGroups();
       view.value = { kind: "group", groupId: created.id };
       targetGroupId.value = created.id;
     } else if (current.kind === "rename") {
       await window.api.renameGroup(current.group.id, current.value);
-      await load();
+      await loadGroups();
     } else {
       await window.api.deleteGroup(current.group.id);
       if (view.value.kind === "group" && view.value.groupId === current.group.id) {
         view.value = { kind: "ungrouped" };
       }
-      await load();
+      await loadGroups();
       showToast(`已删除分组「${current.group.name}」`, "info");
     }
     dialog.value = null;

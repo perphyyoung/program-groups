@@ -1,6 +1,16 @@
-import { app, BrowserWindow, ipcMain, Menu, shell, type WebContents } from "electron";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  net,
+  protocol,
+  shell,
+  type WebContents,
+} from "electron";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   addMembers,
   closeDatabase,
@@ -20,7 +30,19 @@ import {
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu } from "./scan";
-import type { AppView, GroupView, LibraryData, ScanProgress, ScanSummary } from "../src/lib/types";
+import type {
+  AppRecord,
+  AppView,
+  GroupsData,
+  GroupView,
+  LibraryData,
+  ScanProgress,
+  ScanSummary,
+} from "../src/lib/types";
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: "pg-icon", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 const devUrl = process.env["ELECTRON_RENDERER_URL"];
 const e2eDataDir = process.env["E2E"] === "1" ? process.env["PG_DATA_DIR"] : undefined;
@@ -39,11 +61,11 @@ function databasePath(): string {
   return join(dataRoot(), "pg.db");
 }
 
-function iconDataUrl(iconFile: string | null): string | null {
+function iconUrl(appId: string, iconFile: string | null): string | null {
   if (!iconFile) return null;
   try {
-    const buffer = readFileSync(join(dataRoot(), iconFile));
-    return `data:image/png;base64,${buffer.toString("base64")}`;
+    const version = Math.trunc(statSync(join(dataRoot(), iconFile)).mtimeMs);
+    return `pg-icon://${appId}?v=${version}`;
   } catch (error) {
     log.warn(
       `[icon] 读取失败 ${iconFile}: ${error instanceof Error ? error.message : String(error)}`,
@@ -52,22 +74,38 @@ function iconDataUrl(iconFile: string | null): string | null {
   }
 }
 
-function loadLibrary(): LibraryData {
-  const apps = listActiveApps();
-  const groups = listGroups();
-  const memberships = listMemberships();
+interface GroupData {
+  groups: GroupView[];
+  memberships: { appId: string; groupId: string }[];
+  groupIdsByApp: Map<string, string[]>;
+}
+
+function loadGroupData(apps: AppRecord[]): GroupData {
   const activeIds = new Set(apps.map((item) => item.id));
+  const memberships = listMemberships().filter((membership) => activeIds.has(membership.appId));
   const groupIdsByApp = new Map<string, string[]>();
   const countsByGroup = new Map<string, number>();
 
   for (const membership of memberships) {
-    if (!activeIds.has(membership.appId)) continue;
     const ids = groupIdsByApp.get(membership.appId) ?? [];
     ids.push(membership.groupId);
     groupIdsByApp.set(membership.appId, ids);
     countsByGroup.set(membership.groupId, (countsByGroup.get(membership.groupId) ?? 0) + 1);
   }
 
+  const groups = listGroups().map((group) => ({
+    id: group.id,
+    name: group.name,
+    sort: group.sort,
+    count: countsByGroup.get(group.id) ?? 0,
+  }));
+
+  return { groups, memberships, groupIdsByApp };
+}
+
+function loadLibrary(): LibraryData {
+  const apps = listActiveApps();
+  const { groups, groupIdsByApp } = loadGroupData(apps);
   const appViews: AppView[] = apps.map((item) => ({
     id: item.id,
     name: item.name,
@@ -79,17 +117,16 @@ function loadLibrary(): LibraryData {
     firstSeenAt: item.firstSeenAt,
     lastSeenAt: item.lastSeenAt,
     groupIds: groupIdsByApp.get(item.id) ?? [],
-    iconUrl: iconDataUrl(item.iconFile),
+    iconUrl: iconUrl(item.id, item.iconFile),
   }));
 
-  const groupViews: GroupView[] = groups.map((group) => ({
-    id: group.id,
-    name: group.name,
-    sort: group.sort,
-    count: countsByGroup.get(group.id) ?? 0,
-  }));
+  return { apps: appViews, groups, missingCount: countMissing() };
+}
 
-  return { apps: appViews, groups: groupViews, missingCount: countMissing() };
+function loadGroups(): GroupsData {
+  const apps = listActiveApps();
+  const { groups, memberships } = loadGroupData(apps);
+  return { groups, memberships };
 }
 
 let scanning = false;
@@ -105,10 +142,10 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
     };
 
     const result = scanStartMenu(onProgress);
-    const icons = await extractIcons(result.candidates, dataRoot(), onProgress);
+    const iconResult = await extractIcons(result.candidates, dataRoot(), onProgress);
     const discovered = result.candidates.map((candidate) => ({
       ...candidate,
-      iconFile: icons.get(candidate.id) ?? null,
+      iconFile: iconResult.icons.get(candidate.id) ?? null,
     }));
     const reconciled = reconcile(discovered, scanStartedAt);
     const summary: ScanSummary = {
@@ -118,11 +155,13 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       ignoredItems: result.ignoredItems,
       duplicate: result.duplicate,
       ...reconciled,
+      changed: reconciled.changed || iconResult.extracted > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} ignored=${summary.ignored} ` +
-        `duplicate=${summary.duplicate} added=${summary.added} missing=${summary.missing}`,
+        `duplicate=${summary.duplicate} icons=${iconResult.extracted}/${iconResult.cached} ` +
+        `added=${summary.added} missing=${summary.missing}`,
     );
     return summary;
   } finally {
@@ -183,6 +222,8 @@ function duplicateFriendly<T>(task: () => T): T {
 }
 
 ipcMain.handle("library:load", () => handleIpc("library:load", loadLibrary));
+
+ipcMain.handle("library:groups", () => handleIpc("library:groups", loadGroups));
 
 ipcMain.handle("library:scan", (event) =>
   handleIpcAsync("library:scan", () => runScan(event.sender)),
@@ -288,6 +329,26 @@ app.whenReady().then(() => {
     `[start] electron=${process.versions.electron} node=${process.versions.node} ` +
       `data=${dataRoot()} db=${databasePath()} log=${logPath}`,
   );
+  protocol.handle("pg-icon", async (request) => {
+    const id = new URL(request.url).hostname;
+    if (!/^[a-f0-9]{16}$/u.test(id)) return new Response("Not found", { status: 404 });
+    const filePath = join(dataRoot(), "icons", `${id}.png`);
+    if (!existsSync(filePath)) return new Response("Not found", { status: 404 });
+    try {
+      const response = await net.fetch(pathToFileURL(filePath).toString());
+      return new Response(response.body, {
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch (error) {
+      log.warn(
+        `[icon] 协议读取失败 ${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return new Response("Not found", { status: 404 });
+    }
+  });
   openDatabase(databasePath());
   createWindow();
   app.on("activate", () => {

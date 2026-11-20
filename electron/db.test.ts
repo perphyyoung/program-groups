@@ -49,13 +49,16 @@ afterEach(() => {
 describe("database", () => {
   it("扫描对账：新增、更新、缺失", () => {
     const first = reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T00:00:00.000Z");
-    expect(first).toEqual({ added: 2, updated: 0, missing: 0 });
+    expect(first).toEqual({ added: 2, updated: 0, missing: 0, changed: true });
     expect(listActiveApps()).toHaveLength(2);
 
     const second = reconcile([app("a", "看图王")], "2026-11-20T01:00:00.000Z");
-    expect(second).toEqual({ added: 0, updated: 1, missing: 1 });
+    expect(second).toEqual({ added: 0, updated: 1, missing: 1, changed: true });
     expect(listActiveApps().map((item) => item.id)).toEqual(["a"]);
     expect(countMissing()).toBe(1);
+
+    const third = reconcile([app("a", "看图王")], "2026-11-20T02:00:00.000Z");
+    expect(third.changed).toBe(false);
   });
 
   it("分组与多对多归属；删组不删应用", () => {

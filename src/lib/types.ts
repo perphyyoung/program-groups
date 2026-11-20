@@ -30,6 +30,16 @@ export interface LibraryData {
   missingCount: number;
 }
 
+export interface MembershipView {
+  appId: string;
+  groupId: string;
+}
+
+export interface GroupsData {
+  groups: GroupView[];
+  memberships: MembershipView[];
+}
+
 export type IgnoreReason =
   | "uninstall"
   | "help"
@@ -56,12 +66,16 @@ export interface ScanSummary {
   added: number;
   updated: number;
   missing: number;
+  changed: boolean;
 }
 
 export interface ScanProgress {
   phase: "start-menu" | "icons" | "done";
   done: number;
   total: number;
+  cached?: number;
+  extracted?: number;
+  failed?: number;
 }
 
 export type AppViewFilter =

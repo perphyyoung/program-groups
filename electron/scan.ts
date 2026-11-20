@@ -1,5 +1,5 @@
 import { app, shell, type NativeImage } from "electron";
-import { existsSync, readdirSync, statSync, type Dirent } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve } from "node:path";
 import {
@@ -178,17 +178,27 @@ async function loadIconImage(candidate: ShortcutCandidate): Promise<NativeImage>
   return app.getFileIcon(candidate.launchPath, { size: "large" });
 }
 
-/** 提取图标到 <data>/icons/<appId>.png，返回 appId -> 相对路径 */
+export interface IconExtractResult {
+  icons: Map<string, string>;
+  extracted: number;
+  cached: number;
+  failed: number;
+}
+
+/** 提取图标到 <data>/icons/<appId>.png，返回图标路径与提取统计 */
 export async function extractIcons(
   candidates: ShortcutCandidate[],
   dataDir: string,
   onProgress?: (progress: ScanProgress) => void,
-): Promise<Map<string, string>> {
+): Promise<IconExtractResult> {
   const iconsDir = join(dataDir, "icons");
   await mkdir(iconsDir, { recursive: true });
-  const result = new Map<string, string>();
+  const icons = new Map<string, string>();
   let next = 0;
   let done = 0;
+  let extracted = 0;
+  let cached = 0;
+  let failed = 0;
 
   const worker = async (): Promise<void> => {
     while (true) {
@@ -197,42 +207,67 @@ export async function extractIcons(
       if (index >= candidates.length) return;
       const candidate = candidates[index]!;
       const iconPath = join(iconsDir, `${candidate.id}.png`);
+      const missPath = join(iconsDir, `${candidate.id}.miss`);
       try {
-        let sourceMtime = statSync(candidate.targetPath).mtimeMs;
+        let sourceMtime = Math.max(
+          statSync(candidate.targetPath).mtimeMs,
+          statSync(candidate.launchPath).mtimeMs,
+        );
         const iconSource = iconSourceOf(candidate);
         if (iconSource !== candidate.targetPath) {
           sourceMtime = Math.max(sourceMtime, statSync(iconSource).mtimeMs);
         }
+        const sourceKey = String(sourceMtime);
 
-        let needsWrite = true;
+        let iconIsFresh = false;
         if (existsSync(iconPath)) {
           // eslint-disable-next-line no-await-in-loop -- 每个 worker 内串行处理，避免同时读大量图标
           const iconStat = await stat(iconPath);
-          needsWrite = iconStat.mtimeMs < sourceMtime;
+          iconIsFresh = iconStat.mtimeMs >= sourceMtime;
         }
 
-        if (needsWrite) {
-          // eslint-disable-next-line no-await-in-loop -- 同上，worker 内按顺序取图标
-          const image = await loadIconImage(candidate);
-          if (!image.isEmpty()) {
-            // eslint-disable-next-line no-await-in-loop -- 同上，写完再处理下一个
-            await writeFile(iconPath, image.toPNG());
-            result.set(candidate.id, `icons/${candidate.id}.png`);
-          }
+        if (iconIsFresh) {
+          cached += 1;
+          icons.set(candidate.id, `icons/${candidate.id}.png`);
         } else {
-          result.set(candidate.id, `icons/${candidate.id}.png`);
+          const missIsFresh = existsSync(missPath) && readFileSync(missPath, "utf8") === sourceKey;
+          if (missIsFresh) {
+            failed += 1;
+            if (existsSync(iconPath)) icons.set(candidate.id, `icons/${candidate.id}.png`);
+          } else {
+            // eslint-disable-next-line no-await-in-loop -- 同上，worker 内按顺序取图标
+            const image = await loadIconImage(candidate);
+            if (!image.isEmpty()) {
+              // eslint-disable-next-line no-await-in-loop -- 同上，写完再处理下一个
+              await writeFile(iconPath, image.toPNG());
+              icons.set(candidate.id, `icons/${candidate.id}.png`);
+              extracted += 1;
+            } else {
+              // eslint-disable-next-line no-await-in-loop -- 失败标记也按顺序写
+              await writeFile(missPath, sourceKey, "utf8");
+              failed += 1;
+            }
+          }
         }
       } catch (error) {
+        failed += 1;
         log.warn(
           `[scan] 图标提取失败 ${candidate.launchPath}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       done += 1;
-      onProgress?.({ phase: "icons", done, total: candidates.length });
+      onProgress?.({
+        phase: "icons",
+        done,
+        total: candidates.length,
+        cached,
+        extracted,
+        failed,
+      });
     }
   };
 
   const concurrency = Math.min(8, Math.max(1, candidates.length));
   await Promise.all(Array.from({ length: concurrency }, worker));
-  return result;
+  return { icons, extracted, cached, failed };
 }

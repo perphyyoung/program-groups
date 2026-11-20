@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { LibraryData, ScanProgress, ScanSummary } from "../src/lib/types";
+import type { GroupsData, LibraryData, ScanProgress, ScanSummary } from "../src/lib/types";
 
 contextBridge.exposeInMainWorld("api", {
   loadLibrary: (): Promise<LibraryData> => ipcRenderer.invoke("library:load"),
+  loadGroups: (): Promise<GroupsData> => ipcRenderer.invoke("library:groups"),
   scanLibrary: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scan"),
   createGroup: (name: string) => ipcRenderer.invoke("groups:create", name),
   renameGroup: (id: string, name: string): Promise<void> =>
