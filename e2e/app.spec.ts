@@ -89,9 +89,12 @@ test("扫描、分组、多组与重启持久化", async () => {
   await expect(appCard).toBeVisible();
 
   await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await expect(page.getByLabel("分组名")).toBeFocused();
   await page.getByLabel("分组名").fill("测试组");
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "未分组", exact: true })).toBeVisible();
+  await expect(appCard).toBeVisible();
 
   await page.getByRole("button", { name: "未分组", exact: true }).click();
   await appCard.click();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import AppCard from "./components/AppCard.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
@@ -35,6 +35,7 @@ const scanError = ref<string | null>(null);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
+const dialogInput = ref<HTMLInputElement | null>(null);
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let progressTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeScan: (() => void) | null = null;
@@ -265,12 +266,17 @@ function onDragStart(app: AppView, event: DragEvent): void {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
 
-function openCreate(): void {
+async function openCreate(): Promise<void> {
   dialog.value = { kind: "create", value: "" };
+  await nextTick();
+  dialogInput.value?.focus();
 }
 
-function openRename(group: GroupView): void {
+async function openRename(group: GroupView): Promise<void> {
   dialog.value = { kind: "rename", group, value: group.name };
+  await nextTick();
+  dialogInput.value?.focus();
+  dialogInput.value?.select();
 }
 
 function openDelete(group: GroupView): void {
@@ -284,7 +290,6 @@ async function submitDialog(): Promise<void> {
     if (current.kind === "create") {
       const created = await window.api.createGroup(current.value);
       await loadGroups();
-      view.value = { kind: "group", groupId: created.id };
       targetGroupId.value = created.id;
     } else if (current.kind === "rename") {
       await window.api.renameGroup(current.group.id, current.value);
@@ -517,6 +522,7 @@ onBeforeUnmount(() => {
           {{ dialog.kind === "create" ? "新建分组" : "重命名分组" }}
         </h2>
         <input
+          ref="dialogInput"
           v-model="dialog.value"
           aria-label="分组名"
           maxlength="30"
