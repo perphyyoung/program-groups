@@ -72,6 +72,28 @@ test("扫描应用、图标、已忽略与重复快捷方式", async ({ slot }) 
     })
     .toBeLessThan(4);
 
+  /* 全部应用栏可选加载已忽略项，默认不加载 */
+  await page.getByRole("button", { name: "全部应用", exact: true }).click();
+  const includeIgnored = page.getByLabel("包含已忽略项", { exact: true });
+  await expect(includeIgnored).not.toBeChecked();
+  await expect(page.getByTestId("all-ignored")).toHaveCount(0);
+
+  await includeIgnored.check();
+  await expect(page.getByTestId("all-ignored")).toBeVisible();
+  await expect(page.getByText("测试应用 帮助", { exact: true })).toBeVisible();
+  await expect(page.getByText("已忽略项", { exact: true })).toBeVisible();
+  /* 重复快捷方式不进入全部应用栏 */
+  await expect(page.getByText("测试应用 副本", { exact: true })).toHaveCount(0);
+
+  await search.fill("帮助");
+  await expect(page.getByTestId("all-ignored")).toBeVisible();
+  await expect(page.getByText("测试应用 帮助", { exact: true })).toBeVisible();
+
+  await includeIgnored.uncheck();
+  await expect(page.getByTestId("all-ignored")).toHaveCount(0);
+  await search.fill("");
+
   await page.getByRole("button", { name: "未分组", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: /^包含已忽略项$/u })).toHaveCount(0);
   await expect(appCard).toBeVisible();
 });

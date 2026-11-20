@@ -8,6 +8,8 @@ test("启动后展示未分组骨架与侧栏计数", async ({ slot }) => {
   await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
   await expect(page.getByTestId("app-list")).toBeVisible();
   await expect(page.getByTestId("app-grid")).toHaveCount(0);
+  /* 未分组栏不提供「包含已忽略项」 */
+  await expect(page.getByRole("checkbox", { name: /^包含已忽略项$/u })).toHaveCount(0);
 
   /* 视图：互斥按钮，默认列表；状态只从 aria-pressed 读取 */
   const viewGroup = page.getByRole("group", { name: "视图", exact: true });

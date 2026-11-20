@@ -7,7 +7,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
-import { groupIgnoredItems } from "./lib/ignored-groups";
+import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import type {
   AppEntry,
   AppScope,
@@ -29,6 +29,7 @@ const ignoredItems = ref<IgnoredItem[]>([]);
 const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
 const scope = ref<AppScope>({ kind: "ungrouped" });
+const includeIgnored = ref(false);
 const view = ref<"list" | "grid">("list");
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -51,19 +52,18 @@ const ungroupedCount = computed(
 const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length);
 
-const scopeApps = computed(() => filterApps(apps.value, scope.value, ""));
 const filteredApps = computed(() => filterApps(apps.value, scope.value, search.value));
 
 const ignoredGroups = computed(() =>
   groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value),
 );
 
-const headerCount = computed(() =>
-  scope.value.kind === "ignored"
-    ? ignoredGroups.value.reduce((sum, group) => sum + group.items.length, 0)
-    : scopeApps.value.length,
+/** 全部应用栏的已忽略项：只在勾选后参与展示与搜索，重复项不列入 */
+const ignoredMatches = computed(() =>
+  includeIgnored.value && scope.value.kind === "all"
+    ? filterIgnoredItems(ignoredItems.value, search.value)
+    : [],
 );
-const headerUnit = computed(() => (scope.value.kind === "ignored" ? "项" : "个应用"));
 
 const currentTitle = computed(() => {
   const current = scope.value;
@@ -74,7 +74,11 @@ const currentTitle = computed(() => {
 });
 
 const emptyText = computed(() => {
-  if (search.value.trim()) return "没有匹配的应用";
+  if (search.value.trim()) {
+    return includeIgnored.value && scope.value.kind === "all"
+      ? "没有匹配的应用或已忽略项"
+      : "没有匹配的应用";
+  }
   if (scope.value.kind === "ungrouped") return "所有应用都已归类";
   if (scope.value.kind === "ignored") return "没有被忽略的应用";
   if (scope.value.kind === "group") return "这个分组还没有应用，把应用拖进来";
@@ -122,6 +126,10 @@ async function revealShortcut(item: IgnoredItem): Promise<void> {
 
 function firstChar(name: string): string {
   return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+function reasonLabel(reason: IgnoreReason): string {
+  return IGNORE_REASON_LABELS[reason];
 }
 
 function selectScope(next: AppScope): void {
@@ -361,7 +369,13 @@ onBeforeUnmount(() => {
         <header class="flex items-center gap-4 border-b border-white/10 px-5 py-3">
           <div class="min-w-0">
             <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
-            <p class="mt-0.5 text-xs text-slate-500">{{ headerCount }} {{ headerUnit }}</p>
+            <label
+              v-if="scope.kind === 'all'"
+              class="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-slate-400"
+            >
+              <input v-model="includeIgnored" type="checkbox" class="accent-indigo-500" />
+              包含已忽略项
+            </label>
           </div>
           <div class="ml-auto flex items-center gap-2">
             <input
@@ -497,7 +511,47 @@ onBeforeUnmount(() => {
                 @dragstart="onDragStart(app, $event)"
               />
             </div>
-            <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
+            <section
+              v-if="ignoredMatches.length > 0"
+              data-testid="all-ignored"
+              class="mt-5 overflow-hidden rounded-xl border border-white/10"
+            >
+              <div class="border-b border-white/5 px-4 py-2 text-xs text-slate-500">已忽略项</div>
+              <div
+                v-for="item in ignoredMatches"
+                :key="item.shortcutPath"
+                class="flex items-center gap-3 border-b border-white/5 px-4 py-2.5 last:border-b-0"
+              >
+                <div
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/5 text-xs font-semibold text-slate-300"
+                >
+                  {{ firstChar(item.name) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm text-slate-200">{{ item.name || "（无名称）" }}</div>
+                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
+                    {{ item.target || "（无目标）" }}
+                  </div>
+                </div>
+                <span
+                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
+                >
+                  {{ reasonLabel(item.reason) }}
+                </span>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+                  :aria-label="`打开「${item.name || '未命名'}」所在位置`"
+                  @click="revealShortcut(item)"
+                >
+                  打开位置
+                </button>
+              </div>
+            </section>
+            <div
+              v-if="filteredApps.length === 0 && ignoredMatches.length === 0"
+              class="flex h-full items-center justify-center text-sm text-slate-500"
+            >
               {{ emptyText }}
             </div>
           </template>

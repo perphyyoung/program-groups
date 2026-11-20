@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupIgnoredItems, IGNORE_REASON_LABELS } from "./ignored-groups";
+import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./ignored-groups";
 import type { IgnoredItem, IgnoreReason } from "./types";
 
 function item(name: string, reason: IgnoreReason, target = "C:\\Apps\\tool.exe"): IgnoredItem {
@@ -29,6 +29,13 @@ describe("groupIgnoredItems", () => {
     const items = [item("金山文档", "help", "C:\\WPS\\wps.exe"), item("卸载工具", "uninstall")];
     expect(groupIgnoredItems(items, "wps")[0]?.items).toHaveLength(1);
     expect(groupIgnoredItems(items, "不存在的词")).toEqual([]);
+  });
+
+  it("全局过滤已忽略项：名称或目标命中，按名称排序", () => {
+    const items = [item("B", "help", "C:\\WPS\\wps.exe"), item("A", "help")];
+    expect(filterIgnoredItems(items, "").map((entry) => entry.name)).toEqual(["A", "B"]);
+    expect(filterIgnoredItems(items, "wps").map((entry) => entry.name)).toEqual(["B"]);
+    expect(filterIgnoredItems(items, "不存在的词")).toEqual([]);
   });
 
   it("每个原因都有中文标签", () => {

@@ -22,16 +22,22 @@ export interface IgnoreGroup {
   items: IgnoredItem[];
 }
 
+/** 已忽略项的全局搜索：匹配名称与目标路径，按名称排序 */
+export function filterIgnoredItems(items: IgnoredItem[], keyword: string): IgnoredItem[] {
+  const normalized = keyword.trim().toLowerCase();
+  return items
+    .filter((item) => {
+      if (!normalized) return true;
+      return `${item.name}\n${item.target}`.toLowerCase().includes(normalized);
+    })
+    .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+}
+
 /** 按忽略原因归类；关键字只保留命中的条目，空组不返回 */
 export function groupIgnoredItems(items: IgnoredItem[], keyword: string): IgnoreGroup[] {
-  const normalized = keyword.trim().toLowerCase();
   const buckets = new Map<IgnoreReason, IgnoredItem[]>();
 
-  for (const item of items) {
-    if (normalized) {
-      const haystack = `${item.name}\n${item.target}`.toLowerCase();
-      if (!haystack.includes(normalized)) continue;
-    }
+  for (const item of filterIgnoredItems(items, keyword)) {
     const bucket = buckets.get(item.reason);
     if (bucket) bucket.push(item);
     else buckets.set(item.reason, [item]);
@@ -44,7 +50,7 @@ export function groupIgnoredItems(items: IgnoredItem[], keyword: string): Ignore
     groups.push({
       reason,
       label: IGNORE_REASON_LABELS[reason],
-      items: groupItems.toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN")),
+      items: groupItems,
     });
   }
   return groups;
