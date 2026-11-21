@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("apps:launch", appId),
   manualIgnore: (appId: string): Promise<void> => ipcRenderer.invoke("apps:manualIgnore", appId),
   manualRestore: (appId: string): Promise<void> => ipcRenderer.invoke("apps:manualRestore", appId),
+  setNote: (key: string, note: string): Promise<void> => ipcRenderer.invoke("notes:set", key, note),
   revealShortcut: (path: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("apps:revealShortcut", path),
   onScanProgress: (callback: (progress: ScanProgress) => void): (() => void) => {

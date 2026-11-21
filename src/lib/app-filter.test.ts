@@ -19,6 +19,7 @@ function app(id: string, name: string, groupIds: string[] = []): AppEntry {
 }
 
 const apps = [app("1", "看图王"), app("2", "VLC", ["media"]), app("3", "记事本", ["office"])];
+const noteOf = (entry: AppEntry) => (entry.id === "1" ? "截图与标注" : undefined);
 
 describe("filterApps", () => {
   it("全部应用栏按名称排序", () => {
@@ -43,5 +44,13 @@ describe("filterApps", () => {
     expect(matchesSearch(apps[1]!, "vlc")).toBe(true);
     expect(matchesSearch(apps[1]!, "vlc.exe")).toBe(true);
     expect(matchesSearch(apps[0]!, "记事")).toBe(false);
+  });
+
+  it("搜索备注", () => {
+    expect(matchesSearch(apps[0]!, "截图", noteOf)).toBe(true);
+    expect(matchesSearch(apps[1]!, "截图", noteOf)).toBe(false);
+    expect(filterApps(apps, { kind: "all" }, "截图", noteOf).map((item) => item.name)).toEqual([
+      "看图王",
+    ]);
   });
 });

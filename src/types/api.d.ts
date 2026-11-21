@@ -12,6 +12,7 @@ export interface Api {
   launchApp(appId: string): Promise<{ ok: boolean; error?: string }>;
   manualIgnore(appId: string): Promise<void>;
   manualRestore(appId: string): Promise<void>;
+  setNote(key: string, note: string): Promise<void>;
   revealShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
   onScanProgress(callback: (progress: ScanProgress) => void): () => void;
   log(level: string, message: string): Promise<void>;

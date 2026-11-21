@@ -38,6 +38,16 @@ describe("groupIgnoredItems", () => {
     expect(filterIgnoredItems(items, "不存在的词")).toEqual([]);
   });
 
+  it("搜索已忽略项备注", () => {
+    const items = [item("A", "help"), item("B", "help")];
+    const notes = new Map([["C:\\Start Menu\\A.lnk", "清理工具"]]);
+    const noteOf = (entry: IgnoredItem) => notes.get(entry.shortcutPath);
+    expect(filterIgnoredItems(items, "清理", noteOf).map((entry) => entry.name)).toEqual(["A"]);
+    expect(groupIgnoredItems(items, "清理", noteOf)[0]?.items.map((entry) => entry.name)).toEqual([
+      "A",
+    ]);
+  });
+
   it("每个原因都有中文标签", () => {
     for (const reason of Object.keys(IGNORE_REASON_LABELS)) {
       expect(IGNORE_REASON_LABELS[reason as IgnoreReason]).not.toBe("");

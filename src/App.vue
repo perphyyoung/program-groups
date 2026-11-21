@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
-import AppListRow from "./components/AppListRow.vue";
+import AppRow from "./components/AppRow.vue";
+import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
+import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
+import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
 import type {
   AppEntry,
   AppScope,
@@ -35,6 +38,7 @@ const search = ref("");
 const selected = ref<Set<string>>(new Set());
 const lastSelectedIndex = ref<number | null>(null);
 const dragIds = ref<string[]>([]);
+const notes = ref<Record<string, string>>({});
 const scanning = ref(false);
 const scanProgress = ref<ScanProgress | null>(null);
 const showScanProgress = ref(false);
@@ -54,10 +58,14 @@ const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
 
-const filteredApps = computed(() => filterApps(apps.value, scope.value, search.value));
+const filteredApps = computed(() =>
+  filterApps(apps.value, scope.value, search.value, (app) => appNote(app.id)),
+);
 
 const ignoredGroups = computed(() =>
-  groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value),
+  groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value, (item) =>
+    shortcutNote(item.shortcutPath),
+  ),
 );
 
 const manualIgnoredMatches = computed(() => {
@@ -67,7 +75,8 @@ const manualIgnoredMatches = computed(() => {
       (app) =>
         !keyword ||
         app.name.toLowerCase().includes(keyword) ||
-        app.exePath.toLowerCase().includes(keyword),
+        app.exePath.toLowerCase().includes(keyword) ||
+        appNote(app.id).toLowerCase().includes(keyword),
     )
     .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 });
@@ -75,7 +84,9 @@ const manualIgnoredMatches = computed(() => {
 /** 全部应用栏的已忽略项：只在勾选后参与展示与搜索，重复项不列入 */
 const ignoredMatches = computed(() =>
   includeIgnored.value && scope.value.kind === "all"
-    ? filterIgnoredItems(ignoredItems.value, search.value)
+    ? filterIgnoredItems(ignoredItems.value, search.value, (item) =>
+        shortcutNote(item.shortcutPath),
+      )
     : [],
 );
 
@@ -176,8 +187,32 @@ function onDragEnd(): void {
   dragIds.value = [];
 }
 
-function firstChar(name: string): string {
-  return name.trim().charAt(0).toUpperCase() || "?";
+function appNote(appId: string): string {
+  return notes.value[appNoteKey(appId)] ?? "";
+}
+
+function shortcutNote(shortcutPath: string): string {
+  return notes.value[shortcutNoteKey(shortcutPath)] ?? "";
+}
+
+async function saveNote(key: string, note: string): Promise<void> {
+  try {
+    await window.api.setNote(key, note);
+    const next = { ...notes.value };
+    if (note) next[key] = note;
+    else delete next[key];
+    notes.value = next;
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+function saveAppNote(appId: string, note: string): Promise<void> {
+  return saveNote(appNoteKey(appId), note);
+}
+
+function saveShortcutNote(shortcutPath: string, note: string): Promise<void> {
+  return saveNote(shortcutNoteKey(shortcutPath), note);
 }
 
 function reasonLabel(reason: IgnoreReason): string {
@@ -193,6 +228,7 @@ async function load(): Promise<void> {
   const data = await window.api.loadLibrary();
   apps.value = data.apps;
   manualIgnored.value = data.manualIgnored;
+  notes.value = data.notes;
   groups.value = data.groups;
   missingCount.value = data.missingCount;
   if (!targetGroupId.value || !data.groups.some((group) => group.id === targetGroupId.value)) {
@@ -469,28 +505,31 @@ onBeforeUnmount(() => {
                 :open="manualOpen"
                 @toggle="manualOpen = !manualOpen"
               >
-                <div class="flex flex-col gap-1.5 p-2">
-                  <AppListRow
+                <div class="flex flex-col">
+                  <AppRow
                     v-for="app in manualIgnoredMatches"
                     :key="app.id"
+                    variant="flat"
                     :app="app"
                     :selected="false"
                     :dragging="dragIds.includes(app.id)"
+                    :note="appNote(app.id)"
                     :group-names="groupNamesOf(app)"
                     @dragstart="onManualDragStart(app, $event)"
                     @dragend="onDragEnd"
+                    @save-note="saveAppNote(app.id, $event)"
                   >
                     <template #actions>
                       <button
                         type="button"
-                        class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+                        class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
                         :aria-label="`取消忽略「${app.name}」`"
                         @click.stop="restoreManual(app)"
                       >
                         取消忽略
                       </button>
                     </template>
-                  </AppListRow>
+                  </AppRow>
                 </div>
               </AccordionSection>
               <AccordionSection
@@ -507,36 +546,16 @@ onBeforeUnmount(() => {
                 >
                   这些快捷方式指向已收录的应用，可直接删除
                 </p>
-                <div
+                <IgnoredShortcutRow
                   v-for="item in group.items"
                   :key="item.shortcutPath"
-                  class="flex items-start gap-3 border-t border-white/5 px-4 py-3"
-                >
-                  <div
-                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-sm font-semibold text-slate-300"
-                  >
-                    {{ firstChar(item.name) }}
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-1 text-sm text-slate-200">
-                      <span class="min-w-0 truncate">{{ item.name || "（无名称）" }}</span>
-                      <span v-if="item.keptAs" class="shrink-0 text-xs text-slate-500">
-                        已收录为「{{ item.keptAs }}」
-                      </span>
-                    </div>
-                    <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
-                      {{ item.target || "（无目标）" }}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
-                    :aria-label="`打开「${item.name || '未命名'}」所在位置`"
-                    @click="revealShortcut(item)"
-                  >
-                    打开位置
-                  </button>
-                </div>
+                  :item="item"
+                  :note="shortcutNote(item.shortcutPath)"
+                  :meta-label="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
+                  :meta-title="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
+                  @save-note="saveShortcutNote(item.shortcutPath, $event)"
+                  @reveal="revealShortcut(item)"
+                />
               </AccordionSection>
             </div>
             <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
@@ -551,102 +570,55 @@ onBeforeUnmount(() => {
               class="flex flex-col gap-1.5 pt-5"
               @click.self="clearSelection"
             >
-              <AppListRow
+              <AppRow
                 v-for="app in filteredApps"
                 :key="app.id"
                 :app="app"
                 :selected="selected.has(app.id)"
                 :dragging="dragIds.includes(app.id)"
+                :note="appNote(app.id)"
                 :group-names="groupNamesOf(app)"
                 @select="onSelect(app, $event)"
                 @open="launch(app)"
                 @dragstart="onDragStart(app, $event)"
                 @dragend="onDragEnd"
+                @save-note="saveAppNote(app.id, $event)"
               >
                 <template #actions>
                   <button
                     type="button"
-                    class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-200"
+                    class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/10 hover:text-slate-200"
                     :aria-label="`手动忽略「${app.name}」`"
                     @click.stop="manualIgnore(app)"
                   >
                     忽略
                   </button>
                 </template>
-              </AppListRow>
+              </AppRow>
             </div>
             <section
               v-if="allIgnoredTotal > 0"
               data-testid="all-ignored"
               class="mt-5 overflow-hidden rounded-xl border border-white/10"
             >
-              <div class="border-b border-white/5 px-4 py-2 text-xs text-slate-500">已忽略项</div>
-              <div
+              <div class="px-3 py-2 text-xs text-slate-500">已忽略项</div>
+              <ManualIgnoredAppRow
                 v-for="app in manualIgnoredMatches"
                 :key="app.id"
-                class="flex items-center gap-3 border-b border-white/5 px-4 py-2.5"
-              >
-                <div
-                  class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/5 text-xs font-semibold text-slate-300"
-                >
-                  <img
-                    v-if="app.iconUrl"
-                    :src="app.iconUrl"
-                    :alt="app.name"
-                    class="h-6 w-6 object-contain"
-                  />
-                  <template v-else>{{ firstChar(app.name) }}</template>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm text-slate-200">{{ app.name }}</div>
-                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="app.exePath">
-                    {{ app.exePath }}
-                  </div>
-                </div>
-                <span
-                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
-                >
-                  手动忽略
-                </span>
-                <button
-                  type="button"
-                  class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
-                  :aria-label="`取消忽略「${app.name}」`"
-                  @click="restoreManual(app)"
-                >
-                  取消忽略
-                </button>
-              </div>
-              <div
+                :app="app"
+                :note="appNote(app.id)"
+                @save-note="saveAppNote(app.id, $event)"
+                @restore="restoreManual(app)"
+              />
+              <IgnoredShortcutRow
                 v-for="item in ignoredMatches"
                 :key="item.shortcutPath"
-                class="flex items-center gap-3 border-b border-white/5 px-4 py-2.5 last:border-b-0"
-              >
-                <div
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/5 text-xs font-semibold text-slate-300"
-                >
-                  {{ firstChar(item.name) }}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm text-slate-200">{{ item.name || "（无名称）" }}</div>
-                  <div class="mt-0.5 truncate text-xs text-slate-500" :title="item.target">
-                    {{ item.target || "（无目标）" }}
-                  </div>
-                </div>
-                <span
-                  class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-slate-400"
-                >
-                  {{ reasonLabel(item.reason) }}
-                </span>
-                <button
-                  type="button"
-                  class="shrink-0 rounded-lg border border-white/10 px-2 py-1 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
-                  :aria-label="`打开「${item.name || '未命名'}」所在位置`"
-                  @click="revealShortcut(item)"
-                >
-                  打开位置
-                </button>
-              </div>
+                :item="item"
+                :note="shortcutNote(item.shortcutPath)"
+                :meta-label="reasonLabel(item.reason)"
+                @save-note="saveShortcutNote(item.shortcutPath, $event)"
+                @reveal="revealShortcut(item)"
+              />
             </section>
             <div
               v-if="filteredApps.length === 0 && allIgnoredTotal === 0"

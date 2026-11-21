@@ -29,6 +29,7 @@ export interface LibraryData {
   manualIgnored: AppEntry[];
   groups: GroupEntry[];
   missingCount: number;
+  notes: Record<string, string>;
 }
 
 export interface MembershipEntry {

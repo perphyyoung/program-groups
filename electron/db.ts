@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS manual_ignores (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notes (
+  key        TEXT PRIMARY KEY,
+  note       TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_apps_status ON apps(status);
 CREATE INDEX IF NOT EXISTS idx_apps_name ON apps(name);
 CREATE INDEX IF NOT EXISTS idx_app_groups_group ON app_groups(group_id);
@@ -182,6 +188,26 @@ export function manualIgnoreApp(appId: string): void {
 
 export function restoreManualApp(appId: string): void {
   requireDb().prepare("DELETE FROM manual_ignores WHERE app_id = ?").run(appId);
+}
+
+export function listNotes(): Record<string, string> {
+  const rows = requireDb().prepare("SELECT key, note FROM notes").all() as unknown as {
+    key: string;
+    note: string;
+  }[];
+  return Object.fromEntries(rows.map((row) => [row.key, row.note]));
+}
+
+export function setNote(key: string, note: string): void {
+  if (!note) {
+    requireDb().prepare("DELETE FROM notes WHERE key = ?").run(key);
+    return;
+  }
+  requireDb()
+    .prepare(
+      "INSERT INTO notes (key, note, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at",
+    )
+    .run(key, note, new Date().toISOString());
 }
 
 export function getApp(id: string): AppRecord | null {

@@ -5,11 +5,17 @@ export function fileBaseName(filePath: string): string {
   return parts[parts.length - 1] ?? filePath;
 }
 
-export function matchesSearch(app: AppEntry, keyword: string): boolean {
+export function matchesSearch(
+  app: AppEntry,
+  keyword: string,
+  noteOf?: (app: AppEntry) => string | undefined,
+): boolean {
   const kw = keyword.trim().toLowerCase();
   if (!kw) return true;
   return (
-    app.name.toLowerCase().includes(kw) || fileBaseName(app.exePath).toLowerCase().includes(kw)
+    app.name.toLowerCase().includes(kw) ||
+    fileBaseName(app.exePath).toLowerCase().includes(kw) ||
+    (noteOf?.(app) ?? "").toLowerCase().includes(kw)
   );
 }
 
@@ -21,8 +27,13 @@ export function inScope(app: AppEntry, scope: AppScope): boolean {
 }
 
 /** 当前栏 + 搜索，按名称排序；渲染层只使用这一套过滤口径 */
-export function filterApps(apps: AppEntry[], scope: AppScope, keyword: string): AppEntry[] {
+export function filterApps(
+  apps: AppEntry[],
+  scope: AppScope,
+  keyword: string,
+  noteOf?: (app: AppEntry) => string | undefined,
+): AppEntry[] {
   return apps
-    .filter((app) => inScope(app, scope) && matchesSearch(app, keyword))
+    .filter((app) => inScope(app, scope) && matchesSearch(app, keyword, noteOf))
     .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }

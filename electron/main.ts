@@ -23,6 +23,7 @@ import {
   listGroups,
   listManualIgnoredIds,
   listMemberships,
+  listNotes,
   manualIgnoreApp,
   markAppMissing,
   openDatabase,
@@ -30,6 +31,7 @@ import {
   removeMembers,
   renameGroup,
   restoreManualApp,
+  setNote,
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
@@ -139,6 +141,7 @@ function loadLibrary(): LibraryData {
     manualIgnored: hidden.map((item) => toEntry(item, groupIdsByApp)),
     groups,
     missingCount: countMissing(),
+    notes: listNotes(),
   };
 }
 
@@ -234,6 +237,21 @@ function assertIds(value: unknown): string[] {
   return ids;
 }
 
+function assertNoteKey(value: unknown): string {
+  if (typeof value !== "string") throw new Error("备注键无效");
+  if (!value.startsWith("app:") && !value.startsWith("shortcut:")) {
+    throw new Error("备注键无效");
+  }
+  return value;
+}
+
+function assertNote(value: unknown): string {
+  if (typeof value !== "string") throw new Error("备注无效");
+  const note = value.trim();
+  if (note.length > 10) throw new Error("备注最多 10 个字");
+  return note;
+}
+
 function duplicateFriendly<T>(task: () => T): T {
   try {
     return task();
@@ -309,6 +327,12 @@ ipcMain.handle("apps:manualIgnore", (_event, appId: unknown) =>
 ipcMain.handle("apps:manualRestore", (_event, appId: unknown) =>
   handleIpc("apps:manualRestore", () => {
     restoreManualApp(assertId(appId));
+  }),
+);
+
+ipcMain.handle("notes:set", (_event, key: unknown, note: unknown) =>
+  handleIpc("notes:set", () => {
+    setNote(assertNoteKey(key), assertNote(note));
   }),
 );
 

@@ -11,3 +11,4 @@
 
 - 不做网格视图：整理场景列表视图更合适，不需要在列表与网格之间切换，应用统一用列表展示。
 - 拖拽归组只从行首握把发起：整行不设 `draggable`，避免与行内按钮、文本选择冲突。
+- 行组件命名：通用布局用 `RowLayout`，领域行用 `AppRow` / `IgnoredShortcutRow` / `ManualIgnoredAppRow`，不再使用 `ListRow` / `AppListRow`。

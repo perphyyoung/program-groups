@@ -12,12 +12,14 @@ import {
   listGroups,
   listManualIgnoredIds,
   listMemberships,
+  listNotes,
   manualIgnoreApp,
   openDatabase,
   reconcile,
   removeMembers,
   renameGroup,
   restoreManualApp,
+  setNote,
   type DiscoveredApp,
 } from "./db";
 
@@ -114,5 +116,20 @@ describe("database", () => {
     manualIgnoreApp("a");
     restoreManualApp("a");
     expect(listManualIgnoredIds().has("a")).toBe(false);
+  });
+
+  it("备注：写入、更新、清空", () => {
+    setNote("app:a", "截图");
+    setNote("shortcut:C:\\Start\\A.lnk", "帮助文档");
+    expect(listNotes()).toEqual({
+      "app:a": "截图",
+      "shortcut:C:\\Start\\A.lnk": "帮助文档",
+    });
+
+    setNote("app:a", "看图");
+    expect(listNotes()["app:a"]).toBe("看图");
+
+    setNote("app:a", "");
+    expect(listNotes()).toEqual({ "shortcut:C:\\Start\\A.lnk": "帮助文档" });
   });
 });
