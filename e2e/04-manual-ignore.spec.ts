@@ -10,13 +10,6 @@ test("手动忽略持久化，拖入分组后自动恢复", async ({ slot }) => 
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toBeVisible();
 
-  /* 网格视图不提供手动忽略入口 */
-  await page.getByRole("button", { name: "网格", exact: true }).click();
-  await expect(page.getByRole("button", { name: "手动忽略「测试应用」", exact: true })).toHaveCount(
-    0,
-  );
-  await page.getByRole("button", { name: "列表", exact: true }).click();
-
   await page.getByRole("button", { name: "手动忽略「测试应用」", exact: true }).click();
   await expect(page.getByText("所有应用都已归类", { exact: true })).toBeVisible();
   const ignoredNav = page.getByRole("button", { name: "已忽略", exact: true });

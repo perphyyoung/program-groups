@@ -10,7 +10,7 @@ test("新建分组自动聚焦并保留当前栏，多组归属重启后保留",
   await page.getByLabel("分组名").fill("测试组");
   await page.getByRole("button", { name: "确定", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toBeVisible();
-  /* 新建后不跳转到空分组，仍停在原视图 */
+  /* 新建后不跳转到空分组，仍停在原栏 */
   await expect(page.getByRole("heading", { name: "未分组", exact: true })).toBeVisible();
   await expect(appCard).toBeVisible();
 
