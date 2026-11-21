@@ -1,4 +1,10 @@
-import type { GroupsData, LibraryData, ScanProgress, ScanSummary } from "../lib/types";
+import type {
+  GroupsData,
+  GroupSortMode,
+  LibraryData,
+  ScanProgress,
+  ScanSummary,
+} from "../lib/types";
 
 export interface Api {
   loadLibrary(): Promise<LibraryData>;
@@ -7,6 +13,8 @@ export interface Api {
   createGroup(name: string): Promise<{ id: string; name: string; sort: number }>;
   renameGroup(id: string, name: string): Promise<void>;
   deleteGroup(id: string): Promise<void>;
+  reorderGroups(ids: string[]): Promise<void>;
+  setGroupSortMode(mode: GroupSortMode): Promise<void>;
   addMembers(appIds: string[], groupId: string): Promise<void>;
   removeMembers(appIds: string[], groupId: string): Promise<void>;
   launchApp(appId: string): Promise<{ ok: boolean; error?: string }>;

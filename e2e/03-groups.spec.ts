@@ -1,10 +1,19 @@
 import type { Page } from "@playwright/test";
+import { groupOrder } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 async function openGroupMenu(page: Page, groupName: string): Promise<void> {
   await page.getByRole("button", { name: groupName, exact: true }).hover();
   await page.getByRole("button", { name: `分组操作「${groupName}」`, exact: true }).click();
   await expect(page.getByRole("menu", { name: "分组操作", exact: true })).toBeVisible();
+}
+
+async function createGroup(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "新建分组", exact: true });
+  await dialog.getByLabel("分组名", { exact: true }).fill(name);
+  await dialog.getByRole("button", { name: "创建分组", exact: true }).click();
+  await expect(dialog).toBeHidden();
 }
 
 test("新建分组自动聚焦并保留当前栏，多组归属重启后保留", async ({ slot }) => {
@@ -142,4 +151,105 @@ test("分组重命名与删除：行内校验、影响说明与焦点返回", as
   await expect(page.getByRole("button", { name: "整理组 改名", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "未分组", exact: true })).toBeFocused();
   await expect(appCard).not.toContainText("整理组 改名");
+});
+
+test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ slot }) => {
+  const { page } = slot;
+  await createGroup(page, "排序B");
+  await createGroup(page, "排序A");
+
+  const sortSelect = page.getByLabel("分组排序方式", { exact: true });
+  await expect(sortSelect).toHaveValue("manual");
+  const order = await groupOrder(page);
+  expect(order.indexOf("排序B")).toBeLessThan(order.indexOf("排序A"));
+
+  await sortSelect.selectOption({ label: "名称排序" });
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序A") < current.indexOf("排序B");
+    })
+    .toBe(true);
+
+  await sortSelect.selectOption({ label: "创建顺序" });
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
+
+  await sortSelect.selectOption({ label: "手动排序" });
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
+
+  /* 键盘：Alt+↑ 把排序A移到排序B之前 */
+  const gripA = page.getByRole("button", {
+    name: "拖动排序「排序A」，Alt+加方向键调整顺序",
+    exact: true,
+  });
+  await gripA.focus();
+  await page.keyboard.press("Alt+ArrowUp");
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序A") < current.indexOf("排序B");
+    })
+    .toBe(true);
+
+  /* 拖拽：把排序B拖到排序A上方，拖动中出现插入线 */
+  const gripB = page.getByRole("button", {
+    name: "拖动排序「排序B」，Alt+加方向键调整顺序",
+    exact: true,
+  });
+  const rowA = page.getByRole("button", { name: "排序A", exact: true });
+  const gripBox = await gripB.boundingBox();
+  const rowBox = await rowA.boundingBox();
+  expect(gripBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  if (gripBox && rowBox) {
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rowBox.x + 12, rowBox.y + 2, { steps: 8 });
+    await expect(page.getByTestId("group-drop-marker")).toBeVisible();
+    await page.mouse.up();
+  }
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
+
+  /* 名称排序不覆盖手动顺序；重启后模式与手动顺序都保留 */
+  await sortSelect.selectOption({ label: "名称排序" });
+  await expect(sortSelect).toHaveValue("name");
+  await slot.relaunch();
+  const restarted = slot.page;
+  await expect(restarted.getByRole("button", { name: "排序A", exact: true })).toBeVisible();
+  const restartedSelect = restarted.getByLabel("分组排序方式", { exact: true });
+  await expect(restartedSelect).toHaveValue("name");
+  const restartedOrder = await groupOrder(restarted);
+  expect(restartedOrder.indexOf("排序A")).toBeLessThan(restartedOrder.indexOf("排序B"));
+
+  await restartedSelect.selectOption({ label: "手动排序" });
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(restarted);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
+
+  /* 自动排序下没有排序握把 */
+  await restartedSelect.selectOption({ label: "名称排序" });
+  await expect(
+    restarted.getByRole("button", {
+      name: "拖动排序「排序A」，Alt+加方向键调整顺序",
+      exact: true,
+    }),
+  ).toHaveCount(0);
 });

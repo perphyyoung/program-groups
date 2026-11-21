@@ -18,6 +18,7 @@ import {
   createGroup,
   deleteGroup,
   getApp,
+  getGroupSortMode,
   groupExists,
   listActiveApps,
   listGroups,
@@ -30,11 +31,14 @@ import {
   reconcile,
   removeMembers,
   renameGroup,
+  reorderGroups,
   restoreManualApp,
+  setGroupSortMode,
   setNote,
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
+import { isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
   AppRecord,
@@ -108,6 +112,7 @@ function loadGroupData(
     name: group.name,
     sort: group.sort,
     count: countsByGroup.get(group.id) ?? 0,
+    createdAt: group.createdAt,
   }));
 
   return { groups, memberships, groupIdsByApp };
@@ -142,6 +147,7 @@ function loadLibrary(): LibraryData {
     groups,
     missingCount: countMissing(),
     notes: listNotes(),
+    groupSortMode: getGroupSortMode(),
   };
 }
 
@@ -237,6 +243,13 @@ function assertIds(value: unknown): string[] {
   return ids;
 }
 
+function assertGroupIds(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error("分组顺序无效");
+  const ids = value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  if (ids.length !== value.length) throw new Error("分组顺序无效");
+  return ids;
+}
+
 function assertNoteKey(value: unknown): string {
   if (typeof value !== "string") throw new Error("备注键无效");
   if (!value.startsWith("app:") && !value.startsWith("shortcut:")) {
@@ -308,6 +321,19 @@ ipcMain.handle("groups:rename", (_event, id: unknown, name: unknown) =>
 ipcMain.handle("groups:delete", (_event, id: unknown) =>
   handleIpc("groups:delete", () => {
     deleteGroup(assertId(id));
+  }),
+);
+
+ipcMain.handle("groups:reorder", (_event, ids: unknown) =>
+  handleIpc("groups:reorder", () => {
+    reorderGroups(assertGroupIds(ids));
+  }),
+);
+
+ipcMain.handle("groups:setSortMode", (_event, mode: unknown) =>
+  handleIpc("groups:setSortMode", () => {
+    if (!isGroupSortMode(mode)) throw new Error("排序方式无效");
+    setGroupSortMode(mode);
   }),
 );
 

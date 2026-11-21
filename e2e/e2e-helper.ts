@@ -4,7 +4,6 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
-
 /** 复制当前环境变量，并剔除会让应用走 dev 模式的变量 */
 export function e2eEnv(extra: Record<string, string> = {}): Record<string, string> {
   const env: Record<string, string> = {};
@@ -52,4 +51,12 @@ export async function launchApp(appData: string, scanDir: string): Promise<Launc
   });
   const page = await app.firstWindow();
   return { app, page };
+}
+
+/** 分组行没有独立角色，顺序本身是断言对象，用 data-group-row 读取 aria-label */
+export async function groupOrder(page: Page): Promise<string[]> {
+  return page
+    .getByRole("navigation")
+    .locator("[data-group-row]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label") ?? ""));
 }

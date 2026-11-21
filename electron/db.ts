@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { AppRecord, ScanSummary } from "../src/lib/types";
+import type { AppRecord, GroupSortMode, ScanSummary } from "../src/lib/types";
 import type { ShortcutCandidate } from "../src/lib/scan-rules";
 
 export interface DiscoveredApp extends ShortcutCandidate {
@@ -156,6 +156,44 @@ export function listGroups(): GroupRow[] {
     .prepare("SELECT * FROM groups ORDER BY sort, name COLLATE NOCASE")
     .all() as unknown as GroupDbRow[];
   return rows.map(toGroup);
+}
+
+const GROUP_SORT_KEY = "group_sort_mode";
+
+export function getGroupSortMode(): GroupSortMode {
+  const row = requireDb().prepare("SELECT value FROM meta WHERE key = ?").get(GROUP_SORT_KEY) as
+    | { value: string }
+    | undefined;
+  return row?.value === "name" || row?.value === "created" ? row.value : "manual";
+}
+
+export function setGroupSortMode(mode: GroupSortMode): void {
+  requireDb()
+    .prepare(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(GROUP_SORT_KEY, mode);
+}
+
+/** 手动排序：ids 必须且只能覆盖当前全部分组，事务内按顺序重写 sort */
+export function reorderGroups(ids: string[]): void {
+  const database = requireDb();
+  const rows = database.prepare("SELECT id FROM groups").all() as unknown as { id: string }[];
+  const known = new Set(rows.map((row) => row.id));
+  if (ids.length !== known.size || new Set(ids).size !== ids.length) {
+    throw new Error("分组已变化，请刷新");
+  }
+  if (ids.some((id) => !known.has(id))) throw new Error("分组已变化，请刷新");
+
+  const update = database.prepare("UPDATE groups SET sort = ? WHERE id = ?");
+  database.exec("BEGIN");
+  try {
+    ids.forEach((id, index) => update.run(index + 1, id));
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listMemberships(): MembershipRow[] {

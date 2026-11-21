@@ -10,6 +10,7 @@ import AppToast from "./components/AppToast.vue";
 import RowContextMenu from "./components/RowContextMenu.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
+import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
 import {
@@ -22,6 +23,7 @@ import type {
   AppEntry,
   AppScope,
   GroupEntry,
+  GroupSortMode,
   IgnoredItem,
   IgnoreReason,
   ScanProgress,
@@ -57,6 +59,7 @@ const dialog = ref<DialogState | null>(null);
 const dialogError = ref<string | null>(null);
 const dialogBusy = ref(false);
 const groupMenuId = ref<string | null>(null);
+const groupSortMode = ref<GroupSortMode>("manual");
 const sidebar = useTemplateRef<{ focusUngrouped: () => void }>("sidebar");
 const menuItems = ref<RowMenuItem[]>([]);
 const contextMenu = useTemplateRef<{
@@ -75,6 +78,7 @@ const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
 const menuLabel = computed(() => (groupMenuId.value ? "分组操作" : "行操作"));
+const sortedGroups = computed(() => sortGroups(groups.value, groupSortMode.value));
 
 const filteredApps = computed(() =>
   filterApps(apps.value, scope.value, search.value, (app) => appNote(app.id)),
@@ -325,21 +329,27 @@ function selectScope(next: AppScope): void {
   clearSelection();
 }
 
+function ensureTargetGroup(): void {
+  if (!targetGroupId.value || !groups.value.some((group) => group.id === targetGroupId.value)) {
+    targetGroupId.value = sortedGroups.value[0]?.id ?? "";
+  }
+}
+
 async function load(): Promise<void> {
   const data = await window.api.loadLibrary();
   apps.value = data.apps;
   manualIgnored.value = data.manualIgnored;
   notes.value = data.notes;
+  groupSortMode.value = data.groupSortMode;
   groups.value = data.groups;
   missingCount.value = data.missingCount;
-  if (!targetGroupId.value || !data.groups.some((group) => group.id === targetGroupId.value)) {
-    targetGroupId.value = data.groups[0]?.id ?? "";
-  }
+  ensureTargetGroup();
 }
 
 async function loadGroups(): Promise<void> {
   const data = await window.api.loadGroups();
   groups.value = data.groups;
+  ensureTargetGroup();
   const groupIdsByApp = new Map<string, string[]>();
   for (const membership of data.memberships) {
     const ids = groupIdsByApp.get(membership.appId) ?? [];
@@ -350,6 +360,41 @@ async function loadGroups(): Promise<void> {
     app.groupIds = groupIdsByApp.get(app.id) ?? [];
     return app;
   });
+}
+
+async function setGroupSortMode(mode: GroupSortMode): Promise<void> {
+  if (mode === groupSortMode.value) return;
+  const previous = groupSortMode.value;
+  groupSortMode.value = mode;
+  ensureTargetGroup();
+  try {
+    await window.api.setGroupSortMode(mode);
+  } catch (error) {
+    groupSortMode.value = previous;
+    ensureTargetGroup();
+    showToast(`保存排序方式失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function reorderGroups(ids: string[]): Promise<void> {
+  if (groupSortMode.value !== "manual") return;
+  const previous = groups.value;
+  const byId = new Map(groups.value.map((group) => [group.id, group]));
+  const next = ids
+    .map((id, index) => {
+      const group = byId.get(id);
+      return group ? { ...group, sort: index + 1 } : null;
+    })
+    .filter((group): group is GroupEntry => group !== null);
+  if (next.length !== groups.value.length) return;
+
+  groups.value = next;
+  try {
+    await window.api.reorderGroups(ids);
+  } catch (error) {
+    groups.value = previous;
+    showToast(`排序失败：${errorMessage(error)}`, "error");
+  }
 }
 
 async function scan(): Promise<void> {
@@ -591,7 +636,8 @@ onBeforeUnmount(() => {
     <div class="flex min-h-0 flex-1">
       <AppSidebar
         ref="sidebar"
-        :groups="groups"
+        :groups="sortedGroups"
+        :sort-mode="groupSortMode"
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
         :ignored-count="ignoredCount"
@@ -602,6 +648,8 @@ onBeforeUnmount(() => {
         @select="selectScope"
         @create="openCreate"
         @menu="openGroupMenu"
+        @sort-mode-change="setGroupSortMode"
+        @reorder="reorderGroups"
         @drop-apps="onDropApps"
       />
 
@@ -801,7 +849,7 @@ onBeforeUnmount(() => {
             class="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-[#151b25] px-4 py-2 text-sm text-slate-200 shadow-2xl"
           >
             <span class="text-xs text-slate-400">已选 {{ selectedCount }} 项</span>
-            <template v-if="groups.length > 0">
+            <template v-if="sortedGroups.length > 0">
               <select
                 v-model="targetGroupId"
                 aria-label="选择分组"
@@ -814,7 +862,7 @@ onBeforeUnmount(() => {
                   <span aria-hidden="true" class="text-[10px] leading-none text-slate-400">▾</span>
                 </component>
                 <option value="" disabled>加入分组…</option>
-                <option v-for="group in groups" :key="group.id" :value="group.id">
+                <option v-for="group in sortedGroups" :key="group.id" :value="group.id">
                   {{ group.name }}
                 </option>
               </select>

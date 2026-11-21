@@ -8,6 +8,7 @@ import {
   countMissing,
   createGroup,
   deleteGroup,
+  getGroupSortMode,
   listActiveApps,
   listGroups,
   listManualIgnoredIds,
@@ -18,7 +19,9 @@ import {
   reconcile,
   removeMembers,
   renameGroup,
+  reorderGroups,
   restoreManualApp,
+  setGroupSortMode,
   setNote,
   type DiscoveredApp,
 } from "./db";
@@ -116,6 +119,25 @@ describe("database", () => {
     manualIgnoreApp("a");
     restoreManualApp("a");
     expect(listManualIgnoredIds().has("a")).toBe(false);
+  });
+
+  it("分组排序：手动顺序持久化，排序方式读写与校验", () => {
+    const a = createGroup("A");
+    const b = createGroup("B");
+    const c = createGroup("C");
+
+    expect(getGroupSortMode()).toBe("manual");
+    setGroupSortMode("name");
+    expect(getGroupSortMode()).toBe("name");
+    setGroupSortMode("created");
+    expect(getGroupSortMode()).toBe("created");
+
+    reorderGroups([c.id, a.id, b.id]);
+    expect(listGroups().map((group) => group.name)).toEqual(["C", "A", "B"]);
+
+    expect(() => reorderGroups([a.id, b.id])).toThrow("分组已变化");
+    expect(() => reorderGroups([a.id, a.id, b.id])).toThrow("分组已变化");
+    expect(() => reorderGroups([a.id, b.id, "missing"])).toThrow("分组已变化");
   });
 
   it("备注：写入、更新、清空", () => {

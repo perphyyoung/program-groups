@@ -17,11 +17,14 @@ export interface AppEntry extends AppRecord {
   iconUrl: string | null;
 }
 
+export type GroupSortMode = "manual" | "name" | "created";
+
 export interface GroupEntry {
   id: string;
   name: string;
   sort: number;
   count: number;
+  createdAt: string;
 }
 
 export interface LibraryData {
@@ -30,6 +33,7 @@ export interface LibraryData {
   groups: GroupEntry[];
   missingCount: number;
   notes: Record<string, string>;
+  groupSortMode: GroupSortMode;
 }
 
 export interface MembershipEntry {
