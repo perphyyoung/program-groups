@@ -14,6 +14,13 @@ export interface Api {
   manualRestore(appId: string): Promise<void>;
   setNote(key: string, note: string): Promise<void>;
   revealShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
+  launchShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
+  revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
+  checkPaths(paths: {
+    run: string | null;
+    target: string | null;
+    link: string | null;
+  }): Promise<{ run: boolean; target: boolean; link: boolean }>;
   onScanProgress(callback: (progress: ScanProgress) => void): () => void;
   log(level: string, message: string): Promise<void>;
 }

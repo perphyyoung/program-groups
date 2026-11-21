@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from "vue";
+import type { RowContextRequest } from "../lib/row-menu";
 import type { AppEntry } from "../lib/types";
 import { useNoteEditor } from "../lib/use-note-editor";
 import RowLayout from "./RowLayout.vue";
@@ -15,7 +16,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [event: MouseEvent];
-  open: [];
+  toggle: [];
+  run: [];
+  contextmenu: [request: RowContextRequest];
   dragstart: [event: DragEvent];
   dragend: [];
   saveNote: [note: string];
@@ -58,13 +61,14 @@ function onHandleDragStart(event: DragEvent): void {
     :variant="variant"
     :selected="selected"
     :dragging="dragging"
-    :title="`${app.name}\n${app.exePath}\n双击打开，拖动左侧握把可归组`"
+    :title="`${app.name}\n${app.exePath}\n拖动左侧握把可归组；右键查看更多`"
     role="button"
     tabindex="0"
     :aria-label="app.name"
     @click="emit('select', $event)"
-    @dblclick="emit('open')"
-    @keydown.enter="emit('open')"
+    @keydown.enter.self.prevent="emit('toggle')"
+    @keydown.space.self.prevent="emit('toggle')"
+    @contextmenu="emit('contextmenu', $event)"
   >
     <template #lead>
       <span
@@ -171,6 +175,14 @@ function onHandleDragStart(event: DragEvent): void {
 
     <template #actions>
       <slot name="actions" />
+      <button
+        type="button"
+        class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+        :aria-label="`启动「${app.name}」`"
+        @click.stop="emit('run')"
+      >
+        启动
+      </button>
     </template>
   </RowLayout>
 </template>

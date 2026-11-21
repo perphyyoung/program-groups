@@ -31,7 +31,7 @@ test("扫描应用、图标、已忽略与重复快捷方式", async ({ slot }) 
   await expect(helpGroup).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("测试应用 帮助", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "打开「测试应用 帮助」所在位置", exact: true }),
+    page.getByRole("button", { name: "启动「测试应用 帮助」", exact: true }),
   ).toBeVisible();
 
   await duplicateGroup.click();

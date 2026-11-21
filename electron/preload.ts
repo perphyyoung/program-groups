@@ -20,6 +20,16 @@ contextBridge.exposeInMainWorld("api", {
   setNote: (key: string, note: string): Promise<void> => ipcRenderer.invoke("notes:set", key, note),
   revealShortcut: (path: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("apps:revealShortcut", path),
+  launchShortcut: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("shortcuts:launch", path),
+  revealPath: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("paths:reveal", path),
+  checkPaths: (paths: {
+    run: string | null;
+    target: string | null;
+    link: string | null;
+  }): Promise<{ run: boolean; target: boolean; link: boolean }> =>
+    ipcRenderer.invoke("paths:check", paths),
   onScanProgress: (callback: (progress: ScanProgress) => void): (() => void) => {
     const listener = (_event: unknown, progress: ScanProgress): void => callback(progress);
     ipcRenderer.on("scan:progress", listener);

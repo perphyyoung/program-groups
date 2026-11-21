@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
 import AppRow from "./components/AppRow.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
+import RowContextMenu from "./components/RowContextMenu.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import { filterApps } from "./lib/app-filter";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
+import {
+  buildRowMenu,
+  type RowContextRequest,
+  type RowMenuItem,
+  type RowMenuSpec,
+} from "./lib/row-menu";
 import type {
   AppEntry,
   AppScope,
@@ -47,6 +54,12 @@ const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
 const dialogInput = ref<HTMLInputElement | null>(null);
+const menuItems = ref<RowMenuItem[]>([]);
+const contextMenu = useTemplateRef<{
+  openAt: (x: number, y: number, anchor: HTMLElement | null) => void;
+  close: (restoreFocus?: boolean) => void;
+}>("contextMenu");
+let menuSeq = 0;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let progressTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeScan: (() => void) | null = null;
@@ -151,9 +164,89 @@ function toggleGroup(reason: IgnoreReason): void {
   openReasons.value = next;
 }
 
-async function revealShortcut(item: IgnoredItem): Promise<void> {
-  const result = await window.api.revealShortcut(item.shortcutPath);
-  if (!result.ok) showToast(`打开失败：${result.error ?? "未知错误"}`, "error");
+async function revealShortcutPath(path: string): Promise<void> {
+  try {
+    const result = await window.api.revealShortcut(path);
+    if (!result.ok) showToast(`打开失败：${result.error ?? "未知错误"}`, "error");
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+function revealShortcut(item: IgnoredItem): Promise<void> {
+  return revealShortcutPath(item.shortcutPath);
+}
+
+async function revealPath(path: string): Promise<void> {
+  try {
+    const result = await window.api.revealPath(path);
+    if (!result.ok) showToast(`打开失败：${result.error ?? "未知错误"}`, "error");
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+async function runShortcut(item: IgnoredItem): Promise<void> {
+  try {
+    const result = await window.api.launchShortcut(item.shortcutPath);
+    if (!result.ok) showToast(`启动失败：${result.error ?? "未知错误"}`, "error");
+  } catch (error) {
+    showToast(errorMessage(error), "error");
+  }
+}
+
+function appMenuSpec(app: AppEntry): RowMenuSpec {
+  return {
+    paths: {
+      run: app.launchPath,
+      target: app.exePath,
+      link: app.launchKind === "lnk" ? app.launchPath : null,
+    },
+    actions: {
+      run: () => void launch(app),
+      revealTarget: () => void revealPath(app.exePath),
+      revealLink: () => {
+        if (app.launchKind === "lnk") void revealShortcutPath(app.launchPath);
+      },
+    },
+  };
+}
+
+function shortcutMenuSpec(item: IgnoredItem): RowMenuSpec {
+  return {
+    paths: {
+      run: item.shortcutPath,
+      target: item.target || null,
+      link: item.shortcutPath,
+    },
+    actions: {
+      run: () => void runShortcut(item),
+      revealTarget: () => {
+        if (item.target) void revealPath(item.target);
+      },
+      revealLink: () => void revealShortcut(item),
+    },
+  };
+}
+
+async function openRowMenu(request: RowContextRequest, spec: RowMenuSpec): Promise<void> {
+  const seq = ++menuSeq;
+  contextMenu.value?.close(false);
+  let exists = {
+    run: spec.paths.run !== null,
+    target: spec.paths.target !== null,
+    link: spec.paths.link !== null,
+  };
+  try {
+    exists = await window.api.checkPaths(spec.paths);
+  } catch {
+    /* 路径检查失败时按路径存在处理，点击后再给出失败提示 */
+  }
+  if (seq !== menuSeq) return;
+  menuItems.value = buildRowMenu(spec.paths, exists, spec.actions);
+  await nextTick();
+  if (seq !== menuSeq) return;
+  contextMenu.value?.openAt(request.x, request.y, request.anchor);
 }
 
 async function manualIgnore(app: AppEntry): Promise<void> {
@@ -310,6 +403,14 @@ function onSelect(app: AppEntry, event: MouseEvent): void {
     lastSelectedIndex.value = index;
   }
   selected.value = next;
+}
+
+function toggleSelect(app: AppEntry): void {
+  const next = new Set(selected.value);
+  if (next.has(app.id)) next.delete(app.id);
+  else next.add(app.id);
+  selected.value = next;
+  lastSelectedIndex.value = filteredApps.value.findIndex((item) => item.id === app.id);
 }
 
 async function launch(app: AppEntry): Promise<void> {
@@ -515,6 +616,8 @@ onBeforeUnmount(() => {
                     :dragging="dragIds.includes(app.id)"
                     :note="appNote(app.id)"
                     :group-names="groupNamesOf(app)"
+                    @run="launch(app)"
+                    @contextmenu="openRowMenu($event, appMenuSpec(app))"
                     @dragstart="onManualDragStart(app, $event)"
                     @dragend="onDragEnd"
                     @save-note="saveAppNote(app.id, $event)"
@@ -554,7 +657,8 @@ onBeforeUnmount(() => {
                   :meta-label="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
                   :meta-title="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
                   @save-note="saveShortcutNote(item.shortcutPath, $event)"
-                  @reveal="revealShortcut(item)"
+                  @run="runShortcut(item)"
+                  @contextmenu="openRowMenu($event, shortcutMenuSpec(item))"
                 />
               </AccordionSection>
             </div>
@@ -579,7 +683,9 @@ onBeforeUnmount(() => {
                 :note="appNote(app.id)"
                 :group-names="groupNamesOf(app)"
                 @select="onSelect(app, $event)"
-                @open="launch(app)"
+                @toggle="toggleSelect(app)"
+                @run="launch(app)"
+                @contextmenu="openRowMenu($event, appMenuSpec(app))"
                 @dragstart="onDragStart(app, $event)"
                 @dragend="onDragEnd"
                 @save-note="saveAppNote(app.id, $event)"
@@ -608,6 +714,8 @@ onBeforeUnmount(() => {
                 :app="app"
                 :note="appNote(app.id)"
                 @save-note="saveAppNote(app.id, $event)"
+                @run="launch(app)"
+                @contextmenu="openRowMenu($event, appMenuSpec(app))"
                 @restore="restoreManual(app)"
               />
               <IgnoredShortcutRow
@@ -617,7 +725,8 @@ onBeforeUnmount(() => {
                 :note="shortcutNote(item.shortcutPath)"
                 :meta-label="reasonLabel(item.reason)"
                 @save-note="saveShortcutNote(item.shortcutPath, $event)"
-                @reveal="revealShortcut(item)"
+                @run="runShortcut(item)"
+                @contextmenu="openRowMenu($event, shortcutMenuSpec(item))"
               />
             </section>
             <div
@@ -756,6 +865,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <RowContextMenu ref="contextMenu" :items="menuItems" />
 
     <AppToast v-if="toast" :message="toast.message" :kind="toast.kind" />
 

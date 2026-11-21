@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from "vue";
+import type { RowContextRequest } from "../lib/row-menu";
 import type { IgnoredItem } from "../lib/types";
 import { useNoteEditor } from "../lib/use-note-editor";
 import RowLayout from "./RowLayout.vue";
@@ -17,7 +18,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   saveNote: [note: string];
-  reveal: [];
+  run: [];
+  contextmenu: [request: RowContextRequest];
 }>();
 
 const inputRef = useTemplateRef<HTMLInputElement>("noteInput");
@@ -41,7 +43,11 @@ function firstChar(name: string): string {
 </script>
 
 <template>
-  <RowLayout :variant="variant" :title="item.target || '（无目标）'">
+  <RowLayout
+    :variant="variant"
+    :title="item.target || '（无目标）'"
+    @contextmenu="emit('contextmenu', $event)"
+  >
     <template #icon>
       <span class="text-xs font-semibold text-slate-300">{{ firstChar(item.name) }}</span>
     </template>
@@ -111,10 +117,10 @@ function firstChar(name: string): string {
       <button
         type="button"
         class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
-        :aria-label="`打开「${item.name || '未命名'}」所在位置`"
-        @click="emit('reveal')"
+        :aria-label="`启动「${item.name || '未命名'}」`"
+        @click="emit('run')"
       >
-        打开位置
+        启动
       </button>
     </template>
   </RowLayout>

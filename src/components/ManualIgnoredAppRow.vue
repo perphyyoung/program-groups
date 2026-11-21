@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useTemplateRef } from "vue";
+import type { RowContextRequest } from "../lib/row-menu";
 import type { AppEntry } from "../lib/types";
 import { useNoteEditor } from "../lib/use-note-editor";
 import RowLayout from "./RowLayout.vue";
@@ -11,7 +12,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   saveNote: [note: string];
+  run: [];
   restore: [];
+  contextmenu: [request: RowContextRequest];
 }>();
 
 const inputRef = useTemplateRef<HTMLInputElement>("noteInput");
@@ -35,7 +38,7 @@ function firstChar(name: string): string {
 </script>
 
 <template>
-  <RowLayout variant="flat" :title="app.exePath">
+  <RowLayout variant="flat" :title="app.exePath" @contextmenu="emit('contextmenu', $event)">
     <template #icon>
       <img v-if="app.iconUrl" :src="app.iconUrl" :alt="app.name" class="h-6 w-6 object-contain" />
       <span v-else class="text-xs font-semibold text-slate-300">{{ firstChar(app.name) }}</span>
@@ -108,6 +111,14 @@ function firstChar(name: string): string {
         @click="emit('restore')"
       >
         取消忽略
+      </button>
+      <button
+        type="button"
+        class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"
+        :aria-label="`启动「${app.name}」`"
+        @click="emit('run')"
+      >
+        启动
       </button>
     </template>
   </RowLayout>

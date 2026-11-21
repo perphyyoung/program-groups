@@ -252,6 +252,27 @@ function assertNote(value: unknown): string {
   return note;
 }
 
+function startMenuShortcutPath(value: unknown): { path: string } | { error: string } {
+  if (typeof value !== "string" || value.length === 0) return { error: "路径无效" };
+  const resolved = resolve(value);
+  if (extname(resolved).toLowerCase() !== ".lnk") return { error: "只能打开快捷方式" };
+  if (!existsSync(resolved)) return { error: "快捷方式不存在" };
+  const inStartMenu = startMenuRoots().some((root) =>
+    resolved.toLowerCase().startsWith(`${root.toLowerCase()}\\`),
+  );
+  if (!inStartMenu) return { error: "快捷方式不在开始菜单目录内" };
+  return { path: resolved };
+}
+
+function pathExists(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    return existsSync(resolve(value));
+  } catch {
+    return false;
+  }
+}
+
 function duplicateFriendly<T>(task: () => T): T {
   try {
     return task();
@@ -338,20 +359,42 @@ ipcMain.handle("notes:set", (_event, key: unknown, note: unknown) =>
 
 ipcMain.handle("apps:revealShortcut", (_event, shortcutPath: unknown) =>
   handleIpcAsync("apps:revealShortcut", async () => {
-    if (typeof shortcutPath !== "string" || shortcutPath.length === 0) {
-      return { ok: false, error: "路径无效" };
-    }
-    const resolved = resolve(shortcutPath);
-    if (extname(resolved).toLowerCase() !== ".lnk") {
-      return { ok: false, error: "只能打开快捷方式" };
-    }
-    if (!existsSync(resolved)) return { ok: false, error: "快捷方式不存在" };
-    const inStartMenu = startMenuRoots().some((root) =>
-      resolved.toLowerCase().startsWith(`${root.toLowerCase()}\\`),
-    );
-    if (!inStartMenu) return { ok: false, error: "快捷方式不在开始菜单目录内" };
+    const target = startMenuShortcutPath(shortcutPath);
+    if ("error" in target) return { ok: false, error: target.error };
+    shell.showItemInFolder(target.path);
+    return { ok: true };
+  }),
+);
+
+ipcMain.handle("shortcuts:launch", (_event, shortcutPath: unknown) =>
+  handleIpcAsync("shortcuts:launch", async () => {
+    const target = startMenuShortcutPath(shortcutPath);
+    if ("error" in target) return { ok: false, error: target.error };
+    const error = await shell.openPath(target.path);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  }),
+);
+
+ipcMain.handle("paths:reveal", (_event, path: unknown) =>
+  handleIpcAsync("paths:reveal", async () => {
+    if (typeof path !== "string" || path.length === 0) return { ok: false, error: "路径无效" };
+    const resolved = resolve(path);
+    if (!existsSync(resolved)) return { ok: false, error: "文件不存在" };
     shell.showItemInFolder(resolved);
     return { ok: true };
+  }),
+);
+
+ipcMain.handle("paths:check", (_event, paths: unknown) =>
+  handleIpc("paths:check", () => {
+    const input =
+      paths !== null && typeof paths === "object" ? (paths as Record<string, unknown>) : {};
+    return {
+      run: pathExists(input["run"]),
+      target: pathExists(input["target"]),
+      link: pathExists(input["link"]),
+    };
   }),
 );
 
