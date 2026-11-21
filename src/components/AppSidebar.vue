@@ -1,13 +1,15 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import type { AppScope, GroupEntry } from "../lib/types";
 
-defineProps<{
+const props = defineProps<{
   groups: GroupEntry[];
   totalCount: number;
   ungroupedCount: number;
   ignoredCount: number;
   active: AppScope;
   scanning: boolean;
+  dragging: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -18,8 +20,29 @@ const emit = defineEmits<{
   dropApps: [groupId: string, appIds: string[]];
 }>();
 
+const overGroupId = ref<string | null>(null);
+
+watch(
+  () => props.dragging,
+  (dragging) => {
+    if (!dragging) overGroupId.value = null;
+  },
+);
+
 function isActive(active: AppScope, groupId: string): boolean {
   return active.kind === "group" && active.groupId === groupId;
+}
+
+function onDragEnter(event: DragEvent, groupId: string): void {
+  if (!event.dataTransfer?.types.includes("application/x-pg-apps")) return;
+  overGroupId.value = groupId;
+}
+
+function onDragLeave(event: DragEvent, groupId: string): void {
+  const next = event.relatedTarget;
+  const current = event.currentTarget;
+  if (next instanceof Node && current instanceof Node && current.contains(next)) return;
+  if (overGroupId.value === groupId) overGroupId.value = null;
 }
 
 function onDragOver(event: DragEvent): void {
@@ -29,6 +52,7 @@ function onDragOver(event: DragEvent): void {
 
 function onDrop(event: DragEvent, groupId: string): void {
   event.preventDefault();
+  overGroupId.value = null;
   const raw = event.dataTransfer?.getData("application/x-pg-apps");
   if (!raw) return;
   try {
@@ -101,23 +125,30 @@ function onDrop(event: DragEvent, groupId: string): void {
         v-for="group in groups"
         :key="group.id"
         class="group relative mt-1"
+        @dragenter="onDragEnter($event, group.id)"
+        @dragleave="onDragLeave($event, group.id)"
         @dragover="onDragOver"
         @drop="onDrop($event, group.id)"
       >
         <button
           :aria-label="group.name"
-          class="flex w-full items-center justify-between rounded-lg px-3 py-2 pr-14 text-left text-sm transition"
+          class="flex w-full items-center justify-between rounded-lg px-3 py-2 pr-14 text-left text-sm transition outline-offset-1 motion-reduce:transition-none"
           :class="
-            isActive(active, group.id)
-              ? 'bg-indigo-500/15 text-indigo-200'
-              : 'text-slate-300 hover:bg-white/5'
+            overGroupId === group.id
+              ? 'bg-indigo-500/20 text-indigo-100 outline-2 outline-indigo-400'
+              : isActive(active, group.id)
+                ? 'bg-indigo-500/15 text-indigo-200'
+                : 'text-slate-300 hover:bg-white/5'
           "
           @click="emit('select', { kind: 'group', groupId: group.id })"
         >
           <span class="truncate">{{ group.name }}</span>
           <span class="text-xs text-slate-500">{{ group.count }}</span>
         </button>
-        <div class="absolute right-2 top-1.5 hidden items-center gap-1 group-hover:flex">
+        <div
+          v-if="!dragging"
+          class="absolute right-2 top-1.5 hidden items-center gap-1 group-hover:flex"
+        >
           <button
             class="rounded px-1 text-xs text-slate-500 hover:text-slate-200"
             :aria-label="`重命名分组 ${group.name}`"

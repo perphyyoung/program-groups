@@ -41,9 +41,11 @@ test("手动忽略持久化，拖入分组后自动恢复", async ({ slot }) => 
   await expect(restoreButton).toBeVisible();
 
   /* 拖到侧栏分组：加入分组后自动解除手动忽略 */
-  const manualRow = restarted.getByRole("button", { name: "测试应用", exact: true });
+  /* 拖拽入口是行首握把，整行不可拖 */
+  const manualHandle = restarted.getByTitle("拖动「测试应用」到分组", { exact: true });
   const groupNav = restarted.getByRole("button", { name: "测试组", exact: true });
-  await manualRow.dragTo(groupNav);
+  await expect(manualHandle).toBeVisible();
+  await manualHandle.dragTo(groupNav);
   await expect(groupNav).toContainText("1");
   await expect(restoreButton).toHaveCount(0);
 

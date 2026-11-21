@@ -34,6 +34,7 @@ const includeIgnored = ref(false);
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
 const lastSelectedIndex = ref<number | null>(null);
+const dragIds = ref<string[]>([]);
 const scanning = ref(false);
 const scanProgress = ref<ScanProgress | null>(null);
 const showScanProgress = ref(false);
@@ -166,8 +167,13 @@ async function restoreManual(app: AppEntry): Promise<void> {
 }
 
 function onManualDragStart(app: AppEntry, event: DragEvent): void {
+  dragIds.value = [app.id];
   event.dataTransfer?.setData("application/x-pg-apps", JSON.stringify([app.id]));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+
+function onDragEnd(): void {
+  dragIds.value = [];
 }
 
 function firstChar(name: string): string {
@@ -319,6 +325,7 @@ async function onDropApps(groupId: string, appIds: string[]): Promise<void> {
 function onDragStart(app: AppEntry, event: DragEvent): void {
   const ids = selected.value.has(app.id) ? Array.from(selected.value) : [app.id];
   if (!selected.value.has(app.id)) selected.value = new Set([app.id]);
+  dragIds.value = ids;
   event.dataTransfer?.setData("application/x-pg-apps", JSON.stringify(ids));
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
@@ -407,6 +414,7 @@ onBeforeUnmount(() => {
         :ignored-count="ignoredCount"
         :active="scope"
         :scanning="scanning"
+        :dragging="dragIds.length > 0"
         @select="selectScope"
         @create="openCreate"
         @rename="openRename"
@@ -467,8 +475,10 @@ onBeforeUnmount(() => {
                     :key="app.id"
                     :app="app"
                     :selected="false"
+                    :dragging="dragIds.includes(app.id)"
                     :group-names="groupNamesOf(app)"
                     @dragstart="onManualDragStart(app, $event)"
+                    @dragend="onDragEnd"
                   >
                     <template #actions>
                       <button
@@ -546,10 +556,12 @@ onBeforeUnmount(() => {
                 :key="app.id"
                 :app="app"
                 :selected="selected.has(app.id)"
+                :dragging="dragIds.includes(app.id)"
                 :group-names="groupNamesOf(app)"
                 @select="onSelect(app, $event)"
                 @open="launch(app)"
                 @dragstart="onDragStart(app, $event)"
+                @dragend="onDragEnd"
               >
                 <template #actions>
                   <button
