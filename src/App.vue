@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
 import AppRow from "./components/AppRow.vue";
+import GroupDialog from "./components/GroupDialog.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
@@ -27,8 +28,8 @@ import type {
 } from "./lib/types";
 
 type DialogState =
-  | { kind: "create"; value: string }
-  | { kind: "rename"; group: GroupEntry; value: string }
+  | { kind: "create" }
+  | { kind: "rename"; group: GroupEntry }
   | { kind: "delete"; group: GroupEntry };
 
 const apps = ref<AppEntry[]>([]);
@@ -53,7 +54,10 @@ const scanError = ref<string | null>(null);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
-const dialogInput = ref<HTMLInputElement | null>(null);
+const dialogError = ref<string | null>(null);
+const dialogBusy = ref(false);
+const groupMenuId = ref<string | null>(null);
+const sidebar = useTemplateRef<{ focusUngrouped: () => void }>("sidebar");
 const menuItems = ref<RowMenuItem[]>([]);
 const contextMenu = useTemplateRef<{
   openAt: (x: number, y: number, anchor: HTMLElement | null) => void;
@@ -70,6 +74,7 @@ const ungroupedCount = computed(
 const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
+const menuLabel = computed(() => (groupMenuId.value ? "分组操作" : "行操作"));
 
 const filteredApps = computed(() =>
   filterApps(apps.value, scope.value, search.value, (app) => appNote(app.id)),
@@ -131,7 +136,9 @@ const emptyText = computed(() => {
 });
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  /* Electron IPC 会把主进程错误包成 "Error invoking remote method 'x': Error: ..." */
+  return message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, "");
 }
 
 function showToast(message: string, kind: "info" | "error"): void {
@@ -231,6 +238,7 @@ function shortcutMenuSpec(item: IgnoredItem): RowMenuSpec {
 
 async function openRowMenu(request: RowContextRequest, spec: RowMenuSpec): Promise<void> {
   const seq = ++menuSeq;
+  groupMenuId.value = null;
   contextMenu.value?.close(false);
   let exists = {
     run: spec.paths.run !== null,
@@ -467,45 +475,82 @@ function onDragStart(app: AppEntry, event: DragEvent): void {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
 }
 
-async function openCreate(): Promise<void> {
-  dialog.value = { kind: "create", value: "" };
-  await nextTick();
-  dialogInput.value?.focus();
+function onMenuClose(): void {
+  groupMenuId.value = null;
 }
 
-async function openRename(group: GroupEntry): Promise<void> {
-  dialog.value = { kind: "rename", group, value: group.name };
-  await nextTick();
-  dialogInput.value?.focus();
-  dialogInput.value?.select();
+function openCreate(): void {
+  dialogError.value = null;
+  dialog.value = { kind: "create" };
+}
+
+function openRename(group: GroupEntry): void {
+  dialogError.value = null;
+  dialog.value = { kind: "rename", group };
 }
 
 function openDelete(group: GroupEntry): void {
+  dialogError.value = null;
   dialog.value = { kind: "delete", group };
 }
 
-async function submitDialog(): Promise<void> {
+function closeDialog(): void {
+  if (dialogBusy.value) return;
+  dialog.value = null;
+  dialogError.value = null;
+}
+
+function openGroupMenu(group: GroupEntry, request: RowContextRequest): void {
+  menuSeq += 1;
+  groupMenuId.value = group.id;
+  menuItems.value = [
+    {
+      label: "重命名分组",
+      disabled: false,
+      separatorAfter: true,
+      run: () => openRename(group),
+    },
+    {
+      label: "删除分组",
+      disabled: false,
+      danger: true,
+      run: () => openDelete(group),
+    },
+  ];
+  void nextTick(() => contextMenu.value?.openAt(request.x, request.y, request.anchor));
+}
+
+async function confirmDialog(name: string): Promise<void> {
   const current = dialog.value;
-  if (!current) return;
+  if (!current || dialogBusy.value) return;
+  dialogBusy.value = true;
+  dialogError.value = null;
   try {
     if (current.kind === "create") {
-      const created = await window.api.createGroup(current.value);
+      const created = await window.api.createGroup(name);
       await loadGroups();
       targetGroupId.value = created.id;
     } else if (current.kind === "rename") {
-      await window.api.renameGroup(current.group.id, current.value);
+      await window.api.renameGroup(current.group.id, name);
       await loadGroups();
     } else {
       await window.api.deleteGroup(current.group.id);
       if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
         scope.value = { kind: "ungrouped" };
+        clearSelection();
       }
       await loadGroups();
       showToast(`已删除分组「${current.group.name}」`, "info");
     }
     dialog.value = null;
+    if (current.kind === "delete") {
+      await nextTick();
+      sidebar.value?.focusUngrouped();
+    }
   } catch (error) {
-    showToast(errorMessage(error), "error");
+    dialogError.value = errorMessage(error);
+  } finally {
+    dialogBusy.value = false;
   }
 }
 
@@ -545,6 +590,7 @@ onBeforeUnmount(() => {
 
     <div class="flex min-h-0 flex-1">
       <AppSidebar
+        ref="sidebar"
         :groups="groups"
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
@@ -552,10 +598,10 @@ onBeforeUnmount(() => {
         :active="scope"
         :scanning="scanning"
         :dragging="dragIds.length > 0"
+        :menu-open-group-id="groupMenuId"
         @select="selectScope"
         @create="openCreate"
-        @rename="openRename"
-        @delete="openDelete"
+        @menu="openGroupMenu"
         @drop-apps="onDropApps"
       />
 
@@ -805,68 +851,18 @@ onBeforeUnmount(() => {
       </main>
     </div>
 
-    <div
-      v-if="dialog"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      @click.self="dialog = null"
-    >
-      <form
-        v-if="dialog.kind !== 'delete'"
-        class="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151b25] p-5 shadow-2xl"
-        @submit.prevent="submitDialog"
-      >
-        <h2 class="text-base font-semibold text-slate-100">
-          {{ dialog.kind === "create" ? "新建分组" : "重命名分组" }}
-        </h2>
-        <input
-          ref="dialogInput"
-          v-model="dialog.value"
-          aria-label="分组名"
-          maxlength="30"
-          class="mt-4 h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400/60"
-          placeholder="例如：看图、开发、常用"
-        />
-        <div class="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            class="h-8 rounded-lg px-3 text-sm text-slate-400 transition hover:text-slate-200"
-            @click="dialog = null"
-          >
-            取消
-          </button>
-          <button
-            type="submit"
-            class="h-8 rounded-lg bg-indigo-500 px-4 text-sm font-medium text-white transition hover:bg-indigo-400"
-          >
-            确定
-          </button>
-        </div>
-      </form>
+    <GroupDialog
+      :mode="dialog?.kind ?? null"
+      :group="dialog && dialog.kind !== 'create' ? dialog.group : null"
+      :error="dialogError"
+      :busy="dialogBusy"
+      @confirm="confirmDialog"
+      @cancel="closeDialog"
+      @closed="closeDialog"
+      @input="dialogError = null"
+    />
 
-      <div
-        v-else
-        class="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151b25] p-5 shadow-2xl"
-      >
-        <h2 class="text-base font-semibold text-slate-100">删除「{{ dialog.group.name }}」？</h2>
-        <p class="mt-2 text-sm text-slate-400">只删除分组，不会卸载应用。</p>
-        <div class="mt-5 flex justify-end gap-2">
-          <button
-            class="h-8 rounded-lg px-3 text-sm text-slate-400 transition hover:text-slate-200"
-            @click="dialog = null"
-          >
-            取消
-          </button>
-          <button
-            class="h-8 rounded-lg bg-rose-500 px-4 text-sm font-medium text-white transition hover:bg-rose-400"
-            @click="submitDialog"
-          >
-            删除
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <RowContextMenu ref="contextMenu" :items="menuItems" />
+    <RowContextMenu ref="contextMenu" :items="menuItems" :label="menuLabel" @close="onMenuClose" />
 
     <AppToast v-if="toast" :message="toast.message" :kind="toast.kind" />
 

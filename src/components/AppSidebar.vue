@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, useTemplateRef, watch } from "vue";
+import type { RowContextRequest } from "../lib/row-menu";
 import type { AppScope, GroupEntry } from "../lib/types";
 
 const props = defineProps<{
@@ -10,17 +11,24 @@ const props = defineProps<{
   active: AppScope;
   scanning: boolean;
   dragging: boolean;
+  menuOpenGroupId?: string | null;
 }>();
 
 const emit = defineEmits<{
   select: [scope: AppScope];
   create: [];
-  rename: [group: GroupEntry];
-  delete: [group: GroupEntry];
+  menu: [group: GroupEntry, request: RowContextRequest];
   dropApps: [groupId: string, appIds: string[]];
 }>();
 
 const overGroupId = ref<string | null>(null);
+const ungroupedButton = useTemplateRef<HTMLButtonElement>("ungroupedButton");
+
+function focusUngrouped(): void {
+  ungroupedButton.value?.focus({ preventScroll: true });
+}
+
+defineExpose({ focusUngrouped });
 
 watch(
   () => props.dragging,
@@ -31,6 +39,35 @@ watch(
 
 function isActive(active: AppScope, groupId: string): boolean {
   return active.kind === "group" && active.groupId === groupId;
+}
+
+function groupActionClass(groupId: string): string {
+  if (props.menuOpenGroupId === groupId) return "pointer-events-auto opacity-100";
+  return "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100";
+}
+
+function onGroupAction(group: GroupEntry, event: MouseEvent): void {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLElement)) return;
+  const rect = button.getBoundingClientRect();
+  button.focus({ preventScroll: true });
+  emit("menu", group, { x: rect.left, y: rect.bottom + 4, anchor: button });
+}
+
+function onGroupContextMenu(group: GroupEntry, event: MouseEvent): void {
+  const container = event.currentTarget;
+  if (!(container instanceof HTMLElement)) return;
+  const row = container.querySelector<HTMLButtonElement>("[data-group-row]");
+  if (!row) return;
+  row.focus({ preventScroll: true });
+  let x = event.clientX;
+  let y = event.clientY;
+  if (x === 0 && y === 0) {
+    const rect = row.getBoundingClientRect();
+    x = rect.left + 8;
+    y = rect.top + Math.min(rect.height, 28);
+  }
+  emit("menu", group, { x, y, anchor: row });
 }
 
 function onDragEnter(event: DragEvent, groupId: string): void {
@@ -92,8 +129,9 @@ function onDrop(event: DragEvent, groupId: string): void {
       </button>
 
       <button
+        ref="ungroupedButton"
         aria-label="未分组"
-        class="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition"
+        class="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400"
         :class="
           active.kind === 'ungrouped'
             ? 'bg-indigo-500/15 text-indigo-200'
@@ -129,10 +167,13 @@ function onDrop(event: DragEvent, groupId: string): void {
         @dragleave="onDragLeave($event, group.id)"
         @dragover="onDragOver"
         @drop="onDrop($event, group.id)"
+        @contextmenu.prevent.stop="onGroupContextMenu(group, $event)"
       >
         <button
+          data-group-row
           :aria-label="group.name"
-          class="flex w-full items-center justify-between rounded-lg px-3 py-2 pr-14 text-left text-sm transition outline-offset-1 motion-reduce:transition-none"
+          :title="group.name"
+          class="flex w-full items-center justify-between rounded-lg py-2 pl-3 pr-10 text-left text-sm transition focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 motion-reduce:transition-none"
           :class="
             overGroupId === group.id
               ? 'bg-indigo-500/20 text-indigo-100 outline-2 outline-indigo-400'
@@ -142,28 +183,21 @@ function onDrop(event: DragEvent, groupId: string): void {
           "
           @click="emit('select', { kind: 'group', groupId: group.id })"
         >
-          <span class="truncate">{{ group.name }}</span>
-          <span class="text-xs text-slate-500">{{ group.count }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ group.name }}</span>
+          <span class="shrink-0 pl-2 text-xs text-slate-500">{{ group.count }}</span>
         </button>
-        <div
+        <button
           v-if="!dragging"
-          class="absolute right-2 top-1.5 hidden items-center gap-1 group-hover:flex"
+          type="button"
+          class="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-base leading-none text-slate-500 transition hover:bg-white/10 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 motion-reduce:transition-none"
+          :class="groupActionClass(group.id)"
+          :aria-label="`分组操作「${group.name}」`"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpenGroupId === group.id"
+          @click.stop="onGroupAction(group, $event)"
         >
-          <button
-            class="rounded px-1 text-xs text-slate-500 hover:text-slate-200"
-            :aria-label="`重命名分组 ${group.name}`"
-            @click.stop="emit('rename', group)"
-          >
-            改
-          </button>
-          <button
-            class="rounded px-1 text-xs text-slate-500 hover:text-rose-300"
-            :aria-label="`删除分组 ${group.name}`"
-            @click.stop="emit('delete', group)"
-          >
-            删
-          </button>
-        </div>
+          <span aria-hidden="true" class="-translate-y-px">⋯</span>
+        </button>
       </div>
 
       <button

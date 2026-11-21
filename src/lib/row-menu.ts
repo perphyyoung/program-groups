@@ -21,6 +21,7 @@ export interface RowMenuItem {
   disabled: boolean;
   title?: string;
   separatorAfter?: boolean;
+  danger?: boolean;
   run: () => void;
 }
 

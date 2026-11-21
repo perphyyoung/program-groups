@@ -2,8 +2,16 @@
 import { onBeforeUnmount, ref } from "vue";
 import type { RowMenuItem } from "../lib/row-menu";
 
-const props = defineProps<{
-  items: RowMenuItem[];
+const props = withDefaults(
+  defineProps<{
+    items: RowMenuItem[];
+    label?: string;
+  }>(),
+  { label: "行操作" },
+);
+
+const emit = defineEmits<{
+  close: [];
 }>();
 
 const menuRef = ref<HTMLDivElement | null>(null);
@@ -80,6 +88,7 @@ function onToggle(event: Event): void {
   if (document.activeElement instanceof Node && menuRef.value?.contains(document.activeElement)) {
     target?.focus({ preventScroll: true });
   }
+  emit("close");
 }
 
 function onFocusIn(event: FocusEvent): void {
@@ -147,14 +156,17 @@ onBeforeUnmount(unbindDismiss);
     class="fixed inset-auto m-0 min-w-44 rounded-lg border border-white/10 bg-[#151b25] p-1 text-xs text-slate-200 shadow-2xl"
     @toggle="onToggle"
   >
-    <div ref="groupRef" role="menu" aria-label="行操作" @keydown="onKeydown">
+    <div ref="groupRef" role="menu" :aria-label="props.label" @keydown="onKeydown">
       <template v-for="(item, index) in props.items" :key="item.label">
         <button
           type="button"
           role="menuitem"
           :disabled="item.disabled"
           :title="item.title"
-          class="flex h-8 w-full items-center rounded px-2.5 text-left text-xs text-slate-200 transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent motion-reduce:transition-none"
+          class="flex h-8 w-full items-center rounded px-2.5 text-left text-xs transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent motion-reduce:transition-none"
+          :class="
+            item.danger ? 'text-rose-300 hover:bg-rose-500/10' : 'text-slate-200 hover:bg-white/10'
+          "
           @pointerenter="onItemHover"
           @click="onAction(item)"
         >
