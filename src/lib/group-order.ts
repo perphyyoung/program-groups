@@ -1,11 +1,19 @@
-import type { GroupEntry, GroupSortMode } from "./types";
+import type { GroupEntry, GroupSortDirection, GroupSortMode } from "./types";
 
 export function isGroupSortMode(value: unknown): value is GroupSortMode {
   return value === "manual" || value === "name" || value === "created";
 }
 
+export function isGroupSortDirection(value: unknown): value is GroupSortDirection {
+  return value === "asc" || value === "desc";
+}
+
 /** 手动顺序来自 groups.sort；名称 / 创建顺序只改变展示，不覆盖手动顺序 */
-export function sortGroups(groups: GroupEntry[], mode: GroupSortMode): GroupEntry[] {
+export function sortGroups(
+  groups: GroupEntry[],
+  mode: GroupSortMode,
+  direction: GroupSortDirection = "asc",
+): GroupEntry[] {
   const list = [...groups];
   if (mode === "name") {
     list.sort(
@@ -22,7 +30,17 @@ export function sortGroups(groups: GroupEntry[], mode: GroupSortMode): GroupEntr
   } else {
     list.sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "zh-CN"));
   }
+  if (direction === "desc") return list.toReversed();
   return list;
+}
+
+/** 倒序手动排序下，可见顺序要反转成手动升序再写库 */
+export function toStoredOrder(
+  visibleIds: string[],
+  mode: GroupSortMode,
+  direction: GroupSortDirection,
+): string[] {
+  return mode === "manual" && direction === "desc" ? visibleIds.toReversed() : [...visibleIds];
 }
 
 /** 把 fromId 移动到插入点 insertIndex（基于原数组的插入位置），返回新顺序 */

@@ -18,6 +18,7 @@ import {
   createGroup,
   deleteGroup,
   getApp,
+  getGroupSortDirection,
   getGroupSortMode,
   groupExists,
   listActiveApps,
@@ -33,12 +34,13 @@ import {
   renameGroup,
   reorderGroups,
   restoreManualApp,
+  setGroupSortDirection,
   setGroupSortMode,
   setNote,
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
-import { isGroupSortMode } from "../src/lib/group-order";
+import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
   AppRecord,
@@ -148,6 +150,7 @@ function loadLibrary(): LibraryData {
     missingCount: countMissing(),
     notes: listNotes(),
     groupSortMode: getGroupSortMode(),
+    groupSortDirection: getGroupSortDirection(),
   };
 }
 
@@ -334,6 +337,13 @@ ipcMain.handle("groups:setSortMode", (_event, mode: unknown) =>
   handleIpc("groups:setSortMode", () => {
     if (!isGroupSortMode(mode)) throw new Error("排序方式无效");
     setGroupSortMode(mode);
+  }),
+);
+
+ipcMain.handle("groups:setSortDirection", (_event, direction: unknown) =>
+  handleIpc("groups:setSortDirection", () => {
+    if (!isGroupSortDirection(direction)) throw new Error("排序方向无效");
+    setGroupSortDirection(direction);
   }),
 );
 

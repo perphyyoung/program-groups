@@ -215,8 +215,8 @@ MVP 只扫描开始菜单，因此：
 - 新建分组：输入名称，回车创建；名称 trim 后为空不允许，同名（不区分大小写）不允许。
 - 新建 / 重命名弹窗打开即聚焦输入框，重命名自动全选原名；新建后保留当前栏，不跳转到空分组。细节见 [design.md](./design.md)。
 - 删除分组：原生确认弹窗，标题「删除分组「X」？」，正文显示组内应用数与归属后果；取消默认聚焦，按钮取消在左、删除分组在右，等宽平分。
-- 分组默认手动排序；分组区标题右侧可切换 手动排序 / 名称排序 / 创建顺序。手动顺序写入 `groups.sort`，排序方式写入 `meta.group_sort_mode`；名称 / 创建顺序只改变展示，不覆盖手动顺序。
-- 手动排序下从分组行首握把拖拽排序，或聚焦握把后 `Alt+↑/↓` 移动；拖动中只显示 2px 插入线，其它行不位移。
+- 分组默认手动排序；分组区标题右侧可切换 手动排序 / 名称排序 / 创建顺序，并用 ↑/↓ 箭头切换正序 / 倒序。手动顺序写入 `groups.sort`，排序方式写入 `meta.group_sort_mode`，方向写入 `meta.group_sort_direction`；名称 / 创建顺序只改变展示，不覆盖手动顺序。
+- 手动排序下从分组行首握把拖拽排序，或聚焦握把后 `Alt+↑/↓` 移动；拖动中只显示 2px 插入线，其它行不位移。倒序拖拽按可见顺序操作，提交时反写为手动升序。
 - MVP 分组顺序中手动顺序可调整；不做跨侧栏排序。
 
 ### 5.4 计数口径
@@ -272,7 +272,7 @@ MVP 只扫描开始菜单，因此：
 
 | 通道 | 入参 | 返回 |
 | --- | --- | --- |
-| `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode }`（`apps` 只含 active 且未手动忽略） |
+| `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary` |
 | `groups:create` | `name` | `GroupEntry` |
@@ -280,6 +280,7 @@ MVP 只扫描开始菜单，因此：
 | `groups:delete` | `id` | `void` |
 | `groups:reorder` | `ids` | `void`，事务内重写 `sort`；`ids` 必须覆盖当前全部分组 |
 | `groups:setSortMode` | `manual \| name \| created` | `void`，写入 `meta.group_sort_mode` |
+| `groups:setSortDirection` | `asc \| desc` | `void`，写入 `meta.group_sort_direction` |
 | `memberships:add` | `appIds, groupId` | `void` |
 | `memberships:remove` | `appIds, groupId` | `void` |
 | `apps:launch` | `appId` | `{ ok: boolean; error?: string }` |
@@ -357,7 +358,7 @@ MVP 只扫描开始菜单，因此：
 - 应用行与已忽略行可添加单行备注，备注参与搜索。
 - 新建「看图」「常用」，把同一个看图软件加入两组；两个组都显示它，未分组计数减 1。
 - 分组「⋯」菜单可重命名与删除；重命名空名或未修改不可保存，重名在弹窗内提示；删除确认显示组内应用数，取消默认聚焦，删除后应用仍保留。
-- 分组区可切换手动 / 名称 / 创建顺序；切回手动恢复原手动顺序；手动排序下可拖拽握把或 `Alt+↑/↓` 改序，重启后顺序与排序方式保留。
+- 分组区可切换手动 / 名称 / 创建顺序与正序 / 倒序；切回手动恢复原手动顺序；手动排序下可拖拽握把或 `Alt+↑/↓` 改序，重启后顺序、方式与方向保留。
 - 从「看图」移除该应用，它仍在「常用」；两组计数正确。
 - 删除「常用」组，应用仍在「看图」，且不触发任何卸载或文件删除。
 - 重启应用，分组、归属、图标全部保留。
@@ -447,7 +448,7 @@ MVP 只扫开始菜单，注册表的初步方案保留在这里，后续实现�
 
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
-- 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序，手动排序可拖拽或键盘调整
+- 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加规则忽略项并参与搜索；默认不加载，重复项不列入
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复

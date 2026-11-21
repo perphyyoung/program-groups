@@ -163,6 +163,26 @@ test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ sl
   const order = await groupOrder(page);
   expect(order.indexOf("排序B")).toBeLessThan(order.indexOf("排序A"));
 
+  /* 倒序：三种方式共用方向，手动倒序是升序的镜像 */
+  const directionToggle = page.getByTestId("group-sort-direction");
+  await expect(directionToggle).toHaveAttribute("aria-pressed", "false");
+  await directionToggle.click();
+  await expect(directionToggle).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序A") < current.indexOf("排序B");
+    })
+    .toBe(true);
+  await directionToggle.click();
+  await expect(directionToggle).toHaveAttribute("aria-pressed", "false");
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
+
   await sortSelect.selectOption({ label: "名称排序" });
   await expect
     .poll(async () => {
@@ -194,6 +214,7 @@ test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ sl
   });
   await gripA.focus();
   await page.keyboard.press("Alt+ArrowUp");
+  await expect(gripA).toBeFocused();
   await expect
     .poll(async () => {
       const current = await groupOrder(page);
@@ -207,16 +228,26 @@ test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ sl
     exact: true,
   });
   const rowA = page.getByRole("button", { name: "排序A", exact: true });
-  const gripBox = await gripB.boundingBox();
+  await expect(gripB).toBeVisible();
+  await expect(rowA).toBeVisible();
+  await gripB.hover();
   const rowBox = await rowA.boundingBox();
-  expect(gripBox).not.toBeNull();
   expect(rowBox).not.toBeNull();
-  if (gripBox && rowBox) {
-    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+  if (rowBox) {
+    /* 拖拽目标：行的水平中心、上四分之一处，稳定落在行中点上方，表示插入到该行之前 */
+    const DRAG_STEPS = 12;
+    const dropPoint = {
+      x: rowBox.x + rowBox.width / 2,
+      y: rowBox.y + rowBox.height / 4,
+    };
     await page.mouse.down();
-    await page.mouse.move(rowBox.x + 12, rowBox.y + 2, { steps: 8 });
-    await expect(page.getByTestId("group-drop-marker")).toBeVisible();
-    await page.mouse.up();
+    await expect(gripB).toBeFocused();
+    try {
+      await page.mouse.move(dropPoint.x, dropPoint.y, { steps: DRAG_STEPS });
+      await expect(page.getByTestId("group-drop-marker")).toBeVisible();
+    } finally {
+      await page.mouse.up();
+    }
   }
   await expect
     .poll(async () => {
@@ -225,18 +256,37 @@ test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ sl
     })
     .toBe(true);
 
-  /* 名称排序不覆盖手动顺序；重启后模式与手动顺序都保留 */
+  /* 名称排序倒序不覆盖手动顺序；重启后模式、方向与手动顺序都保留 */
   await sortSelect.selectOption({ label: "名称排序" });
   await expect(sortSelect).toHaveValue("name");
+  await directionToggle.click();
+  await expect(directionToggle).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(page);
+      return current.indexOf("排序B") < current.indexOf("排序A");
+    })
+    .toBe(true);
   await slot.relaunch();
   const restarted = slot.page;
   await expect(restarted.getByRole("button", { name: "排序A", exact: true })).toBeVisible();
   const restartedSelect = restarted.getByLabel("分组排序方式", { exact: true });
+  const restartedDirection = restarted.getByTestId("group-sort-direction");
   await expect(restartedSelect).toHaveValue("name");
+  await expect(restartedDirection).toHaveAttribute("aria-pressed", "true");
   const restartedOrder = await groupOrder(restarted);
-  expect(restartedOrder.indexOf("排序A")).toBeLessThan(restartedOrder.indexOf("排序B"));
+  expect(restartedOrder.indexOf("排序B")).toBeLessThan(restartedOrder.indexOf("排序A"));
 
+  /* 切回手动：方向仍是倒序，列表为手动升序的镜像 */
   await restartedSelect.selectOption({ label: "手动排序" });
+  await expect
+    .poll(async () => {
+      const current = await groupOrder(restarted);
+      return current.indexOf("排序A") < current.indexOf("排序B");
+    })
+    .toBe(true);
+  await restartedDirection.click();
+  await expect(restartedDirection).toHaveAttribute("aria-pressed", "false");
   await expect
     .poll(async () => {
       const current = await groupOrder(restarted);

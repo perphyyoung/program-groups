@@ -18,6 +18,7 @@ export interface AppEntry extends AppRecord {
 }
 
 export type GroupSortMode = "manual" | "name" | "created";
+export type GroupSortDirection = "asc" | "desc";
 
 export interface GroupEntry {
   id: string;
@@ -34,6 +35,7 @@ export interface LibraryData {
   missingCount: number;
   notes: Record<string, string>;
   groupSortMode: GroupSortMode;
+  groupSortDirection: GroupSortDirection;
 }
 
 export interface MembershipEntry {

@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { AppRecord, GroupSortMode, ScanSummary } from "../src/lib/types";
+import type { AppRecord, GroupSortDirection, GroupSortMode, ScanSummary } from "../src/lib/types";
 import type { ShortcutCandidate } from "../src/lib/scan-rules";
 
 export interface DiscoveredApp extends ShortcutCandidate {
@@ -159,6 +159,7 @@ export function listGroups(): GroupRow[] {
 }
 
 const GROUP_SORT_KEY = "group_sort_mode";
+const GROUP_SORT_DIRECTION_KEY = "group_sort_direction";
 
 export function getGroupSortMode(): GroupSortMode {
   const row = requireDb().prepare("SELECT value FROM meta WHERE key = ?").get(GROUP_SORT_KEY) as
@@ -173,6 +174,21 @@ export function setGroupSortMode(mode: GroupSortMode): void {
       "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
     .run(GROUP_SORT_KEY, mode);
+}
+
+export function getGroupSortDirection(): GroupSortDirection {
+  const row = requireDb()
+    .prepare("SELECT value FROM meta WHERE key = ?")
+    .get(GROUP_SORT_DIRECTION_KEY) as { value: string } | undefined;
+  return row?.value === "desc" ? "desc" : "asc";
+}
+
+export function setGroupSortDirection(direction: GroupSortDirection): void {
+  requireDb()
+    .prepare(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(GROUP_SORT_DIRECTION_KEY, direction);
 }
 
 /** 手动排序：ids 必须且只能覆盖当前全部分组，事务内按顺序重写 sort */

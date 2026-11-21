@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moveGroupOrder, sortGroups } from "./group-order";
+import { moveGroupOrder, sortGroups, toStoredOrder } from "./group-order";
 import type { GroupEntry } from "./types";
 
 function group(id: string, name: string, sort: number, createdAt: string): GroupEntry {
@@ -23,6 +23,32 @@ describe("sortGroups", () => {
 
   it("创建顺序按时间升序", () => {
     expect(sortGroups(manual, "created").map((item) => item.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("三种方式倒序都是升序的镜像", () => {
+    expect(sortGroups(manual, "manual", "desc").map((item) => item.id)).toEqual(["c", "b", "a"]);
+    expect(sortGroups(manual, "name", "desc").map((item) => item.name)).toEqual([
+      "乙组",
+      "甲组",
+      "丙组",
+    ]);
+    expect(sortGroups(manual, "created", "desc").map((item) => item.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("toStoredOrder", () => {
+  const visible = ["a", "b", "c"];
+
+  it("手动正序原样写回", () => {
+    expect(toStoredOrder(visible, "manual", "asc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("手动倒序反转为升序", () => {
+    expect(toStoredOrder(visible, "manual", "desc")).toEqual(["c", "b", "a"]);
+  });
+
+  it("自动排序不反写", () => {
+    expect(toStoredOrder(visible, "name", "desc")).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -54,5 +80,11 @@ describe("moveGroupOrder", () => {
     const result = moveGroupOrder(ids, "x", 0);
     expect(result).toEqual(ids);
     expect(result).not.toBe(ids);
+  });
+
+  it("手动倒序拖拽：可见顺序反写为升序", () => {
+    const nextVisible = moveGroupOrder(ids, "a", 3);
+    expect(nextVisible).toEqual(["b", "c", "a"]);
+    expect(toStoredOrder(nextVisible, "manual", "desc")).toEqual(["a", "c", "b"]);
   });
 });

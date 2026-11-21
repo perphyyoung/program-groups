@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from "vue";
-import { isGroupSortMode, moveGroupOrder } from "../lib/group-order";
+import { isGroupSortMode, moveGroupOrder, toStoredOrder } from "../lib/group-order";
 import type { RowContextRequest } from "../lib/row-menu";
-import type { AppScope, GroupEntry, GroupSortMode } from "../lib/types";
+import type { AppScope, GroupEntry, GroupSortDirection, GroupSortMode } from "../lib/types";
 
 const props = defineProps<{
   groups: GroupEntry[];
   sortMode: GroupSortMode;
+  sortDirection: GroupSortDirection;
   totalCount: number;
   ungroupedCount: number;
   ignoredCount: number;
@@ -21,6 +22,7 @@ const emit = defineEmits<{
   create: [];
   menu: [group: GroupEntry, request: RowContextRequest];
   sortModeChange: [mode: GroupSortMode];
+  sortDirectionChange: [direction: GroupSortDirection];
   reorder: [ids: string[]];
   dropApps: [groupId: string, appIds: string[]];
 }>();
@@ -93,12 +95,22 @@ function onSortModeChange(event: Event): void {
   if (isGroupSortMode(mode)) emit("sortModeChange", mode);
 }
 
-function announceMove(name: string, index: number): void {
+function announce(message: string): void {
   if (announceTimer) clearTimeout(announceTimer);
   sortAnnouncement.value = "";
   announceTimer = setTimeout(() => {
-    sortAnnouncement.value = `「${name}」已移到第 ${index + 1} 位`;
+    sortAnnouncement.value = message;
   }, 50);
+}
+
+function announceMove(name: string, index: number): void {
+  announce(`「${name}」已移到第 ${index + 1} 位`);
+}
+
+function onDirectionClick(): void {
+  const next = props.sortDirection === "asc" ? "desc" : "asc";
+  emit("sortDirectionChange", next);
+  announce(next === "desc" ? "已切换为倒序" : "已切换为正序");
 }
 
 async function focusGrip(id: string): Promise<void> {
@@ -233,7 +245,7 @@ function onGripPointerUp(event: PointerEvent): void {
   const next = moveGroupOrder(ids, id, index);
   if (next.join("\0") === ids.join("\0")) return;
   const group = props.groups.find((item) => item.id === id);
-  emit("reorder", next);
+  emit("reorder", toStoredOrder(next, props.sortMode, props.sortDirection));
   announceMove(group?.name ?? "", next.indexOf(id));
   void focusGrip(id);
 }
@@ -252,7 +264,7 @@ function onGripKeydown(group: GroupEntry, event: KeyboardEvent): void {
   const insertIndex = event.key === "ArrowUp" ? index - 1 : index + 2;
   const next = moveGroupOrder(ids, group.id, insertIndex);
   if (next.join("\0") === ids.join("\0")) return;
-  emit("reorder", next);
+  emit("reorder", toStoredOrder(next, props.sortMode, props.sortDirection));
   announceMove(group.name, next.indexOf(group.id));
   void focusGrip(group.id);
 }
@@ -262,7 +274,7 @@ function onNavScroll(): void {
 }
 
 watch(
-  () => props.sortMode,
+  () => [props.sortMode, props.sortDirection] as const,
   () => cleanupDrag(),
 );
 
@@ -358,24 +370,70 @@ function onDrop(event: DragEvent, groupId: string): void {
         <span class="text-xs text-slate-500">{{ ignoredCount }}</span>
       </button>
 
-      <div class="mt-4 flex items-center justify-between px-3">
+      <div class="mt-4 flex items-center justify-between gap-1 px-3">
         <span class="text-xs font-medium uppercase tracking-wide text-slate-600">分组</span>
-        <select
-          v-if="groups.length > 0"
-          :value="sortMode"
-          aria-label="分组排序方式"
-          class="h-6 w-[5.5rem] rounded-md border border-white/10 bg-white/5 px-1.5 text-[11px] text-slate-400 outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400"
-          @change="onSortModeChange"
-        >
-          <!-- 用 component 渲染 button：HTML 规范不允许 button 直接作为 select 子元素 -->
-          <component :is="'button'" type="button">
-            <selectedcontent></selectedcontent>
-            <span aria-hidden="true" class="text-[10px] leading-none text-slate-500">▾</span>
-          </component>
-          <option value="manual">手动排序</option>
-          <option value="name">名称排序</option>
-          <option value="created">创建顺序</option>
-        </select>
+        <div class="flex items-center gap-1">
+          <select
+            v-if="groups.length > 0"
+            :value="sortMode"
+            aria-label="分组排序方式"
+            class="h-6 w-[5.5rem] rounded-md border border-white/10 bg-white/5 px-1.5 text-[11px] text-slate-400 outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400"
+            @change="onSortModeChange"
+          >
+            <!-- 用 component 渲染 button：HTML 规范不允许 button 直接作为 select 子元素 -->
+            <component :is="'button'" type="button">
+              <selectedcontent></selectedcontent>
+              <span aria-hidden="true" class="text-[10px] leading-none text-slate-500">▾</span>
+            </component>
+            <option value="manual">手动排序</option>
+            <option value="name">名称排序</option>
+            <option value="created">创建顺序</option>
+          </select>
+          <button
+            v-if="groups.length > 1"
+            type="button"
+            data-testid="group-sort-direction"
+            class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-slate-400 transition hover:border-white/20 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 motion-reduce:transition-none"
+            :class="
+              sortDirection === 'desc'
+                ? 'border-indigo-400/60 bg-indigo-500/20 text-indigo-200'
+                : 'border-white/10 bg-white/5'
+            "
+            :aria-label="sortDirection === 'asc' ? '当前正序，切换为倒序' : '当前倒序，切换为正序'"
+            :title="sortDirection === 'asc' ? '切换为倒序' : '切换为正序'"
+            :aria-pressed="sortDirection === 'desc'"
+            @click="onDirectionClick"
+          >
+            <svg
+              v-if="sortDirection === 'asc'"
+              viewBox="0 0 16 16"
+              class="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8 13V3" />
+              <path d="M4 7l4-4 4 4" />
+            </svg>
+            <svg
+              v-else
+              viewBox="0 0 16 16"
+              class="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8 3v10" />
+              <path d="M4 9l4 4 4-4" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div

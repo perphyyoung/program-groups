@@ -23,6 +23,7 @@ import type {
   AppEntry,
   AppScope,
   GroupEntry,
+  GroupSortDirection,
   GroupSortMode,
   IgnoredItem,
   IgnoreReason,
@@ -60,6 +61,7 @@ const dialogError = ref<string | null>(null);
 const dialogBusy = ref(false);
 const groupMenuId = ref<string | null>(null);
 const groupSortMode = ref<GroupSortMode>("manual");
+const groupSortDirection = ref<GroupSortDirection>("asc");
 const sidebar = useTemplateRef<{ focusUngrouped: () => void }>("sidebar");
 const menuItems = ref<RowMenuItem[]>([]);
 const contextMenu = useTemplateRef<{
@@ -78,7 +80,9 @@ const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
 const menuLabel = computed(() => (groupMenuId.value ? "分组操作" : "行操作"));
-const sortedGroups = computed(() => sortGroups(groups.value, groupSortMode.value));
+const sortedGroups = computed(() =>
+  sortGroups(groups.value, groupSortMode.value, groupSortDirection.value),
+);
 
 const filteredApps = computed(() =>
   filterApps(apps.value, scope.value, search.value, (app) => appNote(app.id)),
@@ -341,6 +345,7 @@ async function load(): Promise<void> {
   manualIgnored.value = data.manualIgnored;
   notes.value = data.notes;
   groupSortMode.value = data.groupSortMode;
+  groupSortDirection.value = data.groupSortDirection;
   groups.value = data.groups;
   missingCount.value = data.missingCount;
   ensureTargetGroup();
@@ -373,6 +378,18 @@ async function setGroupSortMode(mode: GroupSortMode): Promise<void> {
     groupSortMode.value = previous;
     ensureTargetGroup();
     showToast(`保存排序方式失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function setGroupSortDirection(direction: GroupSortDirection): Promise<void> {
+  if (direction === groupSortDirection.value) return;
+  const previous = groupSortDirection.value;
+  groupSortDirection.value = direction;
+  try {
+    await window.api.setGroupSortDirection(direction);
+  } catch (error) {
+    groupSortDirection.value = previous;
+    showToast(`保存排序方向失败：${errorMessage(error)}`, "error");
   }
 }
 
@@ -638,6 +655,7 @@ onBeforeUnmount(() => {
         ref="sidebar"
         :groups="sortedGroups"
         :sort-mode="groupSortMode"
+        :sort-direction="groupSortDirection"
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
         :ignored-count="ignoredCount"
@@ -649,6 +667,7 @@ onBeforeUnmount(() => {
         @create="openCreate"
         @menu="openGroupMenu"
         @sort-mode-change="setGroupSortMode"
+        @sort-direction-change="setGroupSortDirection"
         @reorder="reorderGroups"
         @drop-apps="onDropApps"
       />

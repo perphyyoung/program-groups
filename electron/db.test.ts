@@ -8,6 +8,7 @@ import {
   countMissing,
   createGroup,
   deleteGroup,
+  getGroupSortDirection,
   getGroupSortMode,
   listActiveApps,
   listGroups,
@@ -21,6 +22,7 @@ import {
   renameGroup,
   reorderGroups,
   restoreManualApp,
+  setGroupSortDirection,
   setGroupSortMode,
   setNote,
   type DiscoveredApp,
@@ -131,6 +133,10 @@ describe("database", () => {
     expect(getGroupSortMode()).toBe("name");
     setGroupSortMode("created");
     expect(getGroupSortMode()).toBe("created");
+
+    expect(getGroupSortDirection()).toBe("asc");
+    setGroupSortDirection("desc");
+    expect(getGroupSortDirection()).toBe("desc");
 
     reorderGroups([c.id, a.id, b.id]);
     expect(listGroups().map((group) => group.name)).toEqual(["C", "A", "B"]);

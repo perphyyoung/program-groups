@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   GroupsData,
+  GroupSortDirection,
   GroupSortMode,
   LibraryData,
   ScanProgress,
@@ -18,6 +19,8 @@ contextBridge.exposeInMainWorld("api", {
   reorderGroups: (ids: string[]): Promise<void> => ipcRenderer.invoke("groups:reorder", ids),
   setGroupSortMode: (mode: GroupSortMode): Promise<void> =>
     ipcRenderer.invoke("groups:setSortMode", mode),
+  setGroupSortDirection: (direction: GroupSortDirection): Promise<void> =>
+    ipcRenderer.invoke("groups:setSortDirection", direction),
   addMembers: (appIds: string[], groupId: string): Promise<void> =>
     ipcRenderer.invoke("memberships:add", appIds, groupId),
   removeMembers: (appIds: string[], groupId: string): Promise<void> =>

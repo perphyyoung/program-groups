@@ -1,5 +1,6 @@
 import type {
   GroupsData,
+  GroupSortDirection,
   GroupSortMode,
   LibraryData,
   ScanProgress,
@@ -15,6 +16,7 @@ export interface Api {
   deleteGroup(id: string): Promise<void>;
   reorderGroups(ids: string[]): Promise<void>;
   setGroupSortMode(mode: GroupSortMode): Promise<void>;
+  setGroupSortDirection(direction: GroupSortDirection): Promise<void>;
   addMembers(appIds: string[], groupId: string): Promise<void>;
   removeMembers(appIds: string[], groupId: string): Promise<void>;
   launchApp(appId: string): Promise<{ ok: boolean; error?: string }>;
