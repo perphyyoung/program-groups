@@ -269,7 +269,7 @@ MVP 只扫描开始菜单，因此：
 | 通道 | 入参 | 返回 |
 | --- | --- | --- |
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string> }`（`apps` 只含 active 且未手动忽略） |
-| `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分） |
+| `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary` |
 | `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
@@ -431,26 +431,12 @@ MVP 只扫开始菜单，注册表的初步方案保留在这里，后续实现�
 - 导入导出、换机迁移
 - 安装/卸载监听，扫描改为增量事件驱动
 
-## 15. 实现状态（2026-11-20）
-
-MVP 已实现，并通过质量门与 e2e。
-
-验证结果：
-
-- `pnpm test`：18 条通过（4 个文件）
-- `pnpm check`：format / oxlint / eslint / type-check / test / build 全绿，0 warning
-- `pnpm e2e`：3 个文件 3 条用例通过（启动骨架、扫描与已忽略、建组与多组归属、重启持久化、`pg-icon://` 图标加载）
-- e2e 基建：`e2e-helper.ts` / `e2e-logger.ts` / `fixtures.ts`，实例按 spec 文件复用，`slot.relaunch()` 验证重启回填
-- `pnpm release`：打出 `release/Program Groups Setup 0.1.0.exe`
-- 本机开始菜单实测：359 个快捷方式，保留 191 个，忽略 136 个，重复 32 个；金山文档、微信输入法恢复，四个产品自定义卸载入口被过滤
-- 图标缓存实测：第二次启动 `icons=0/191`，没有重新解析图标
-
-已实现：
+## 15. 实现状态（2026-11-21）
 
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组
-- 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`
+- 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加只读条目并参与搜索；默认不加载，重复项不列入
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复
 - 统一行布局：RowLayout 六列，AppRow / IgnoredShortcutRow / ManualIgnoredAppRow 覆盖应用、规则忽略与手动忽略行；备注单行 10 字、参与搜索，路径仅 hover；备注落库，重启保留
@@ -459,9 +445,5 @@ MVP 已实现，并通过质量门与 e2e。
 - 扫描状态：右下角进度卡片显示阶段与进度条，扫描结束后底部居中显示结果提示；刷新按钮固定宽度、扫描期间禁用
 - 搜索、启动、空态、轻提示
 - 展示方式：只保留列表，不提供网格视图；整理场景不需要布局切换
-- 原生下拉：`:root` 声明 `color-scheme: dark`，「选择分组」用 `appearance: base-select` 定制深色弹层与选项；触发器垂直居中，固定宽度容纳 4 个中文字
+- 原生下拉：`:root` 声明 `color-scheme: dark`，「选择分组」用 `appearance: base-select` 定制深色弹层与选项；触发器垂直居中，固定宽度容纳 4 个中文字；箭头自绘并随文字垂直居中，用 `component :is` 渲染 button 消除 select 嵌套告警
 - dev / e2e 数据隔离与 electron-log 日志
-
-未执行：
-
-- 真实用户日常使用验证

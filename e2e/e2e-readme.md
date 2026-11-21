@@ -8,7 +8,7 @@
 | `02-scan.spec.ts`          | 扫描结果、图标协议、已忽略、重复项       |
 | `03-groups.spec.ts`        | 新建分组、自动聚焦、多组归属、重启持久化 |
 | `04-manual-ignore.spec.ts` | 手动忽略、重启保留、拖入分组恢复         |
-| `05-notes.spec.ts`         | 应用行与已忽略行备注、备注搜索           |
+| `05-notes.spec.ts`         | 应用行与已忽略行备注、备注搜索、重启保留 |
 
 ## 01-app-shell.spec.ts
 
