@@ -46,7 +46,7 @@ function firstChar(name: string): string {
     <template #context>
       <form
         v-if="editing"
-        class="flex items-center"
+        class="flex min-w-0 items-center"
         @submit.prevent="commit"
         @click.stop
         @dblclick.stop
@@ -58,7 +58,7 @@ function firstChar(name: string): string {
           maxlength="10"
           placeholder="备注"
           :aria-label="`备注「${app.name}」`"
-          class="h-6 w-[8.25rem] rounded border border-indigo-400/50 bg-white/5 px-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400"
+          class="h-6 w-full min-w-0 max-w-[8.25rem] rounded border border-indigo-400/50 bg-white/5 px-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-400"
           @keydown.enter="onNoteEnter"
           @keydown.esc.stop.prevent="cancel"
           @blur="commit"
@@ -78,6 +78,17 @@ function firstChar(name: string): string {
         >
           {{ note }}
         </button>
+        <button
+          v-else
+          type="button"
+          class="pointer-events-none max-w-[10em] shrink-0 truncate text-left text-slate-500 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 hover:text-slate-300 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 motion-reduce:transition-none"
+          :aria-label="`添加「${app.name}」的备注`"
+          @click.stop="startEdit"
+          @dblclick.stop
+          @keydown.stop
+        >
+          ＋ 备注
+        </button>
       </div>
     </template>
 
@@ -90,18 +101,6 @@ function firstChar(name: string): string {
     </template>
 
     <template #actions>
-      <button
-        v-if="note !== undefined"
-        type="button"
-        :disabled="editing"
-        class="pointer-events-none h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-400 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 hover:border-white/20 hover:bg-white/10 hover:text-slate-200 focus-visible:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 disabled:cursor-not-allowed disabled:hover:border-white/10 disabled:hover:bg-transparent motion-reduce:transition-none"
-        :aria-label="`编辑备注「${app.name}」`"
-        @click.stop="startEdit"
-        @dblclick.stop
-        @keydown.stop
-      >
-        备注
-      </button>
       <button
         type="button"
         class="h-8 shrink-0 rounded-lg border border-white/10 px-2.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/10"

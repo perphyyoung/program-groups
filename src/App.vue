@@ -491,7 +491,7 @@ onBeforeUnmount(() => {
 
         <div
           data-testid="main-scroll"
-          class="min-h-0 flex-1 overflow-y-auto scroll-pt-12 px-5 pb-5"
+          class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-pt-12 px-5 pb-5 [scrollbar-gutter:stable]"
         >
           <div v-if="scope.kind === 'ignored'" class="h-full">
             <div

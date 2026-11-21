@@ -6,9 +6,10 @@ test("应用与已忽略行备注持久化并参与搜索", async ({ slot }) => 
   await expect(appRow).toBeVisible();
 
   await appRow.hover();
-  await page.getByRole("button", { name: "编辑备注「测试应用」", exact: true }).click();
+  await page.getByRole("button", { name: "添加「测试应用」的备注", exact: true }).click();
   const appNote = page.getByLabel("备注「测试应用」", { exact: true });
   await expect(appNote).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(0);
   await appNote.fill("截图");
   await appNote.press("Enter");
   await expect(
@@ -27,9 +28,10 @@ test("应用与已忽略行备注持久化并参与搜索", async ({ slot }) => 
   const helpName = page.getByText("测试应用 帮助", { exact: true });
   await expect(helpName).toBeVisible();
   await helpName.hover();
-  await page.getByRole("button", { name: "编辑备注「测试应用 帮助」", exact: true }).click();
+  await page.getByRole("button", { name: "添加「测试应用 帮助」的备注", exact: true }).click();
   const ignoredNote = page.getByLabel("备注「测试应用 帮助」", { exact: true });
   await expect(ignoredNote).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(0);
   await ignoredNote.fill("帮助文档");
   await ignoredNote.press("Enter");
   await expect(

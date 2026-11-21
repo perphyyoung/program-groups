@@ -20,7 +20,7 @@ const surface = computed(() => {
 
 <template>
   <div
-    class="group grid min-h-12 grid-cols-[1rem_2rem_minmax(8rem,12rem)_minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 motion-reduce:transition-none"
+    class="group grid min-h-12 min-w-0 grid-cols-[1rem_2rem_minmax(8rem,12rem)_minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 motion-reduce:transition-none"
     :class="[variant === 'card' ? 'rounded-lg border' : 'border-t', surface]"
   >
     <div class="flex items-center justify-center">
