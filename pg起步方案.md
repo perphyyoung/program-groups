@@ -170,7 +170,7 @@ WHERE a.status = 'active'
 
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
 - 扫描与提取分离：扫描只检查 `<data>/icons/<appId>.png` 是否存在，写入 `icon_file`；不 stat 源文件、不提取、不写 `.miss`。
-- 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标；勾选「全量重建」时忽略缓存重新提取。失败保留旧图标。
+- 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标，失败保留旧图标；勾选「全量重建」时忽略来源勾选，固定处理 start + store，先删除 `<data>/icons` 并清空数据库图标引用，再重新提取，失败写 `.miss`，不保留旧图标。
 - 设置页「图标来源」控制提取范围：`start` / `store` / `green`；默认只勾 `start`，选择写入 `meta.icon_sources`。`green` 暂无扫描实现，置灰。
 - Store 图标不解析 AUMID：读 `Get-AppxPackageManifest` 的 `Square44x44Logo`，目录用 `[IO.Path]::GetDirectoryName`；按限定词 token 解析，不依赖顺序，排除 `contrast-*`。优先级：targetsize 48/44/32/256，同尺寸优先 `altform-unplated`；无 targetsize 用 scale-200；基名最后；再回退同目录 `AppList.*`。
 - 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/start_<id>.png` 或 `store_<hash>.png`。

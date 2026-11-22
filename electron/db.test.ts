@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addMembers,
+  clearIconFiles,
   closeDatabase,
   countIconStats,
   countMissing,
@@ -78,6 +79,9 @@ describe("database", () => {
     expect(countIconStats().start).toEqual({ cached: 1, total: 2 });
     expect(listActiveApps().find((item) => item.id === "a")?.iconFile).toBe("icons/a.png");
     expect(setIconFiles([{ id: "missing", iconFile: "icons/x.png" }])).toBe(0);
+    clearIconFiles();
+    expect(countIconStats().start).toEqual({ cached: 0, total: 2 });
+    expect(listActiveApps().find((item) => item.id === "a")?.iconFile).toBeNull();
   });
 
   it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {

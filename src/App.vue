@@ -486,7 +486,9 @@ async function setIconSources(sources: IconSource[]): Promise<void> {
 
 async function updateIcons(force: boolean): Promise<void> {
   if (iconUpdating.value) return;
-  const sources: IconSource[] = Array.from(iconSettings.value?.sources ?? ["start"]);
+  const sources: IconSource[] = force
+    ? ["start", "store"]
+    : Array.from(iconSettings.value?.sources ?? ["start"]);
   if (sources.length === 0) {
     showToast("请至少选择一个图标来源", "error");
     return;

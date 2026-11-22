@@ -8,12 +8,13 @@ import {
   shell,
   type WebContents,
 } from "electron";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   addMembers,
+  clearIconFiles,
   closeDatabase,
   countIconStats,
   countMissing,
@@ -65,6 +66,7 @@ import type {
   GroupEntry,
   GroupsData,
   IconSettings,
+  IconSource,
   IconUpdateOptions,
   IconUpdateProgress,
   IconUpdateResult,
@@ -277,7 +279,8 @@ async function updateIcons(
 ): Promise<IconUpdateResult> {
   if (scanning) throw new Error("扫描正在进行");
   if (iconUpdating) throw new Error("图标更新正在进行");
-  const sources = options.sources;
+  // 全量重建 = 所有已实现的来源，忽略渲染进程传入的选择
+  const sources: IconSource[] = options.force ? ["start", "store"] : options.sources;
   if (sources.length === 0) throw new Error("未选择图标来源");
   iconUpdating = true;
   try {
@@ -313,6 +316,20 @@ async function updateIcons(
       }
     }
     const candidates: IconCandidate[] = [...startCandidates, ...storeTasks];
+    if (options.force) {
+      sendProgress({ done: 0, total: 0, detail: "清理旧图标", extracted: 0, cached: 0, failed: 0 });
+      const iconsDir = join(dataRoot(), "icons");
+      try {
+        rmSync(iconsDir, { recursive: true, force: true });
+        mkdirSync(iconsDir, { recursive: true });
+      } catch (error) {
+        throw new Error(
+          `清理图标缓存失败：${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+      clearIconFiles();
+    }
     const iconResult = await extractIcons(
       candidates,
       dataRoot(),

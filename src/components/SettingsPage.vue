@@ -14,13 +14,18 @@ const emit = defineEmits<{
 }>();
 
 const force = ref(false);
+const ALL_SOURCES: IconSource[] = ["start", "store", "green"];
 const selected = computed(() => new Set<IconSource>(props.settings?.sources ?? ["start"]));
+/** 全量重建固定处理全部来源，忽略当前勾选 */
+const effectiveSources = computed<IconSource[]>(() =>
+  force.value ? ALL_SOURCES : Array.from(selected.value),
+);
 const totals = computed(() => {
   const stats = props.settings?.stats;
   if (!stats) return null;
   let cached = 0;
   let total = 0;
-  for (const source of selected.value) {
+  for (const source of effectiveSources.value) {
     cached += stats[source].cached;
     total += stats[source].total;
   }
@@ -33,7 +38,7 @@ const percent = computed(() => {
   if (!totals.value || totals.value.total === 0) return 0;
   return Math.round((totals.value.cached / totals.value.total) * 100);
 });
-const canUpdate = computed(() => !props.busy && selected.value.size > 0);
+const canUpdate = computed(() => !props.busy && (force.value || selected.value.size > 0));
 
 function toggleSource(source: IconSource, event: Event): void {
   const target = event.target;
@@ -63,7 +68,7 @@ function startUpdate(): void {
           class="h-9 min-w-[128px] shrink-0 rounded-lg border border-slate-600/70 bg-white/5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!canUpdate"
           :aria-busy="busy"
-          :title="selected.size === 0 ? '至少选择一个图标来源' : undefined"
+          :title="!force && selected.size === 0 ? '至少选择一个图标来源' : undefined"
           @click="startUpdate"
         >
           {{ busy ? "更新中…" : force ? "重建图标缓存" : "更新图标缓存" }}
@@ -81,7 +86,8 @@ function startUpdate(): void {
             type="checkbox"
             class="size-4 accent-indigo-500"
             :checked="selected.has('start')"
-            :disabled="busy"
+            :disabled="busy || force"
+            :title="force ? '全量重建固定处理全部来源' : undefined"
             @change="toggleSource('start', $event)"
           />
           start
@@ -91,7 +97,8 @@ function startUpdate(): void {
             type="checkbox"
             class="size-4 accent-indigo-500"
             :checked="selected.has('store')"
-            :disabled="busy"
+            :disabled="busy || force"
+            :title="force ? '全量重建固定处理全部来源' : undefined"
             @change="toggleSource('store', $event)"
           />
           store
@@ -159,7 +166,7 @@ function startUpdate(): void {
               role="tooltip"
               class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-white/10 bg-[#151b25] px-2 py-1 text-xs text-slate-300 shadow-xl group-hover:block group-focus-within:block"
             >
-              忽略缓存，重新提取全部图标
+              删除旧图标，重新提取全部来源的图标
             </span>
           </span>
         </div>

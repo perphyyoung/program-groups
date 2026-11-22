@@ -1,3 +1,5 @@
+import { existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "./fixtures";
 
 test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) => {
@@ -30,6 +32,11 @@ test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) 
   await expect(page.getByText(/^图标缓存已更新/u)).toBeHidden({ timeout: 5000 });
   const force = page.getByRole("checkbox", { name: "全量重建", exact: true });
   await force.check();
+  await expect(page.getByRole("checkbox", { name: "start", exact: true })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "store", exact: true })).toBeDisabled();
+  const legacy = join(slot.appData, "icons", "start_legacy.png");
+  writeFileSync(legacy, "old");
   await page.getByRole("button", { name: "重建图标缓存", exact: true }).click();
   await expect(page.getByText(/^图标缓存已更新：新增 1，复用 0，失败 0$/u)).toBeVisible();
+  expect(existsSync(legacy)).toBe(false);
 });

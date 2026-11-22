@@ -290,6 +290,11 @@ export function setIconFiles(entries: { id: string; iconFile: string }[]): numbe
   return changed;
 }
 
+/** 全量重建删除图标目录后调用，避免数据库继续指向已删除文件 */
+export function clearIconFiles(): void {
+  requireDb().prepare("UPDATE apps SET icon_file = NULL WHERE icon_file IS NOT NULL").run();
+}
+
 /** 可提取图标的活跃应用按来源统计；green 暂无数据 */
 export function countIconStats(): IconCacheStats {
   const rows = requireDb()
