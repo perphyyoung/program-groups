@@ -127,6 +127,7 @@ export interface ScanProgress {
   phase: "start-menu" | "store" | "icons" | "done";
   done: number;
   total: number;
+  detail?: string;
   cached?: number;
   extracted?: number;
   failed?: number;

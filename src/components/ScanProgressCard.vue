@@ -13,7 +13,8 @@ const label = computed(() => {
     return `扫描开始菜单 ${progress.done}/${progress.total}`;
   }
   if (progress.phase === "store") {
-    return "扫描 Store 应用";
+    const detail = progress.detail ? ` · ${progress.detail}` : "";
+    return `扫描 Store 应用 ${progress.done}/${progress.total}${detail}`;
   }
   if (progress.phase === "icons") {
     return `检查图标 ${progress.done}/${progress.total} · 缓存 ${progress.cached ?? 0} · 提取 ${progress.extracted ?? 0}`;

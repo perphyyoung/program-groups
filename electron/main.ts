@@ -205,9 +205,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
     };
 
     const startResult = scanStartMenu(onProgress);
-    sender.send("scan:progress", { phase: "store", done: 0, total: 1 });
-    const storeResult = await scanStoreApps();
-    sender.send("scan:progress", { phase: "store", done: 1, total: 1 });
+    const storeResult = await scanStoreApps(onProgress);
     const iconResult = resolveCachedIcons(startResult.candidates, dataRoot());
     const discovered: ScannedApp[] = [
       ...startResult.candidates.map((candidate) => ({

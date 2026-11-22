@@ -163,6 +163,7 @@ WHERE a.status = 'active'
 - 根目录：`%APPDATA%\Microsoft\Windows\Start Menu`、`%ProgramData%\Microsoft\Windows\Start Menu`。
 - 递归查找 `.lnk`；跳过 `Startup` 目录。根目录本身要扫，`SumatraPDF.lnk` 这类根级快捷方式不能漏。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
+- Store 扫描分三段：读取应用包、读取 Store 启动项、分类；PowerShell 逐行输出 `PGPROGRESS` / `PGRESULT`，主进程转成 `scan:progress`，卡片显示「扫描 Store 应用 1/3 · 读取应用包」。
 - 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`；扫描结束后底部居中提示「扫描完成：新增 N，缺失 M，忽略 I，重复 D」。
 
 ### 4.3 图标
@@ -308,7 +309,7 @@ WHERE a.status = 'active'
 
 | 事件 | 载荷 | 用途 |
 | --- | --- | --- |
-| `scan:progress` | `{ phase, done, total, cached?, extracted?, failed? }` | 扫描进度 |
+| `scan:progress` | `{ phase, done, total, detail?, cached?, extracted?, failed? }` | 扫描进度；Store 阶段 `detail` 为当前步骤 |
 | `icons:progress` | `{ done, total, extracted, cached, failed }` | 图标提取进度 |
 
 约定：
