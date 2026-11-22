@@ -443,10 +443,8 @@ async function scan(): Promise<void> {
     ignoredItems.value = summary.ignoredItems;
     duplicateItems.value = summary.duplicateItems;
     if (summary.changed) await load();
-    const iconHint =
-      summary.cachedIcons === 0 && summary.kept > 0 ? "；图标未缓存，可在设置中更新图标缓存" : "";
     showToast(
-      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}${iconHint}`,
+      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
       "info",
     );
   } catch (error) {

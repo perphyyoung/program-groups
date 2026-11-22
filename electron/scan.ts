@@ -211,7 +211,6 @@ export interface IconExtractResult {
 
 export interface CachedIconResult {
   icons: Map<string, string>;
-  cached: number;
 }
 
 /** Store 图标直接来自清单 Logo 资源，不需要 AUMID 解析 */
@@ -230,15 +229,13 @@ export function resolveCachedIcons(
   dataDir: string,
 ): CachedIconResult {
   const icons = new Map<string, string>();
-  let cached = 0;
   for (const candidate of candidates) {
     const iconFile = iconFileForId(candidate.id);
     if (existsSync(join(dataDir, iconFile))) {
       icons.set(candidate.id, iconFile);
-      cached += 1;
     }
   }
-  return { icons, cached };
+  return { icons };
 }
 
 /** 提取图标到 <data>/icons/<appId>.png，返回图标路径与提取统计 */

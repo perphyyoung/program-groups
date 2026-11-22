@@ -103,10 +103,8 @@ function iconUrl(appId: string, iconFile: string | null): string | null {
   try {
     const version = Math.trunc(statSync(join(dataRoot(), iconFile)).mtimeMs);
     return `pg-icon://icon/${encodeURIComponent(appId)}?v=${version}`;
-  } catch (error) {
-    log.warn(
-      `[icon] 读取失败 ${iconFile}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    // 首次启动图标本就为空，缺文件是正常状态，不记日志
     return null;
   }
 }
@@ -256,7 +254,6 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       duplicate: startResult.duplicate,
       duplicateItems: startResult.duplicateItems,
       ...reconciled,
-      cachedIcons: iconResult.cached,
       changed: reconciled.changed || entryTypeChanges > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
@@ -264,8 +261,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
         `storeIgnored=${storeResult.ignored.length} storeOk=${storeResult.ok} ` +
         `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
-        `cachedIcons=${iconResult.cached} added=${summary.added} ` +
-        `missing=${summary.missing} entryTypes=${entryTypeChanges}`,
+        `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
     return summary;
   } finally {

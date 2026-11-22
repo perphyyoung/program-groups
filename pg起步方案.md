@@ -287,7 +287,7 @@ WHERE a.status = 'active'
 | --- | --- | --- |
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
-| `library:scan` | — | `ScanSummary`（含 `cachedIcons`；只读缓存） |
+| `library:scan` | — | `ScanSummary`（只读图标缓存，不返回图标状态） |
 | `icons:settings` | — | `{ sources: IconSource[]; stats: Record<IconSource, { cached; total }> }`，默认仅 `start` |
 | `icons:setSources` | `sources` | `void`，写入 `meta.icon_sources` |
 | `icons:update` | `{ force, sources }` | `{ extracted, cached, failed, force }`，按来源增量提取；`force` 全量重建 |

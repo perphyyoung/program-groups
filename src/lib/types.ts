@@ -102,7 +102,6 @@ export interface ScanSummary {
   added: number;
   updated: number;
   missing: number;
-  cachedIcons: number;
   changed: boolean;
 }
 

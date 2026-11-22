@@ -7,11 +7,7 @@ test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
 
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();
-  await expect(
-    page.getByText(
-      /^扫描完成：新增 1，缺失 0，忽略 1，重复 1；图标未缓存，可在设置中更新图标缓存$/u,
-    ),
-  ).toBeVisible();
+  await expect(page.getByText(/^扫描完成：新增 1，缺失 0，忽略 1，重复 1$/u)).toBeVisible();
 
   /* 扫描只读缓存，首次没有图标，显示首字母占位 */
   await expect(appCard.getByRole("img", { name: "测试应用", exact: true })).toHaveCount(0);
