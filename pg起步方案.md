@@ -168,11 +168,13 @@ WHERE a.status = 'active'
 ### 4.3 图标
 
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
+- 扫描与提取分离：扫描只检查 `<data>/icons/<appId>.png` 是否存在，写入 `icon_file`；不 stat 源文件、不提取、不写 `.miss`。
+- 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标；勾选「全量重建」时忽略缓存重新提取。失败保留旧图标。
 - 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/<appId>.png`。
 - 图标通过 `pg-icon://<appId>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
 - 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
 - 提取失败写 `icons/<appId>.miss`，源文件不变时不重试；成功后正常写 PNG。
-- 并发 8；右下角进度卡片显示「检查图标 N/N · 缓存 X · 提取 Y」。
+- 并发 8；设置页显示「已处理 N/M · 新增 X · 复用 Y · 失败 Z」。
 - 不在 SQLite 里存 BLOB。
 
 ### 4.4 增量与缺失
@@ -281,7 +283,9 @@ WHERE a.status = 'active'
 | --- | --- | --- |
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
-| `library:scan` | — | `ScanSummary` |
+| `library:scan` | — | `ScanSummary`（含 `cachedIcons`；只读缓存） |
+| `icons:status` | — | `{ cached: number; total: number }`，只统计可提取图标的活跃应用 |
+| `icons:update` | `force` | `{ extracted, cached, failed, force }`，默认增量，`force` 全量重建 |
 | `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
 | `groups:delete` | `id` | `void` |
@@ -305,6 +309,7 @@ WHERE a.status = 'active'
 | 事件 | 载荷 | 用途 |
 | --- | --- | --- |
 | `scan:progress` | `{ phase, done, total, cached?, extracted?, failed? }` | 扫描进度 |
+| `icons:progress` | `{ done, total, extracted, cached, failed }` | 图标提取进度 |
 
 约定：
 
@@ -350,7 +355,7 @@ WHERE a.status = 'active'
 4. 数据库：`node:sqlite` 建表、`library:load` 查询、扫描后 reconcile、缺失标记；用临时库做单测。
 5. IPC + preload + `api.d.ts`，串通「启动加载 → 后台扫描 → 刷新列表」。
 6. UI：侧栏、列表、多选、选择栏、归组/移除、分组 CRUD、搜索、启动、空态、提示。
-7. e2e：按场景拆成 `01-app-shell` / `02-scan` / `03-groups`，fixtures 负责实例复用、临时数据目录与重启；覆盖首次扫描、图标、已忽略、建组、多组归属、重启持久化。各文件范围见 [e2e/e2e-readme.md](./e2e/e2e-readme.md)。
+7. e2e：按场景拆成 `01-app-shell` / `02-scan` / `03-groups` / `07-settings`，fixtures 负责实例复用、临时数据目录与重启；覆盖首次扫描、图标缓存、已忽略、建组、多组归属、重启持久化。各文件范围见 [e2e/e2e-readme.md](./e2e/e2e-readme.md)。
 8. `pnpm check` 全绿，`pnpm e2e` 通过，`pnpm release` 打 NSIS 包。
 
 ## 10. 验收标准
@@ -434,7 +439,7 @@ WHERE a.status = 'active'
 
 ## 15. 实现状态
 
-- 开始菜单扫描、快捷方式解析、规则过滤、去重、图标提取
+- 开始菜单扫描、快捷方式解析、规则过滤、去重、图标缓存读取与手动提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
 - 来源：开始菜单 `.lnk` 与 Store/UWP AUMID；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；行名称旁显示 `start` / `store` 徽标；开始菜单扫描根为 `Start Menu` 本身，包含根级 `.lnk`

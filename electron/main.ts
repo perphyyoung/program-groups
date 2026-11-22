@@ -15,6 +15,7 @@ import { pathToFileURL } from "node:url";
 import {
   addMembers,
   closeDatabase,
+  countIconCache,
   countMissing,
   createGroup,
   deleteGroup,
@@ -38,10 +39,11 @@ import {
   setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
+  setIconFiles,
   setNote,
 } from "./db";
 import { log, logPath } from "./logger";
-import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
+import { extractIcons, resolveCachedIcons, scanStartMenu, startMenuRoots } from "./scan";
 import { scanStoreApps } from "./store-scan";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
@@ -51,6 +53,8 @@ import type {
   AppSource,
   GroupEntry,
   GroupsData,
+  IconCacheStatus,
+  IconUpdateResult,
   LibraryData,
   ScanProgress,
   ScanSummary,
@@ -188,12 +192,14 @@ function launchAumid(aumid: string): Promise<void> {
   });
 }
 
+let iconUpdating = false;
+
 async function runScan(sender: WebContents): Promise<ScanSummary> {
   if (scanning) throw new Error("扫描正在进行");
+  if (iconUpdating) throw new Error("图标更新正在进行");
   scanning = true;
   try {
     const scanStartedAt = new Date().toISOString();
-    mkdirSync(join(dataRoot(), "icons"), { recursive: true });
     const onProgress = (progress: ScanProgress): void => {
       sender.send("scan:progress", progress);
     };
@@ -202,7 +208,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
     sender.send("scan:progress", { phase: "store", done: 0, total: 1 });
     const storeResult = await scanStoreApps();
     sender.send("scan:progress", { phase: "store", done: 1, total: 1 });
-    const iconResult = await extractIcons(startResult.candidates, dataRoot(), onProgress);
+    const iconResult = resolveCachedIcons(startResult.candidates, dataRoot());
     const discovered: ScannedApp[] = [
       ...startResult.candidates.map((candidate) => ({
         id: candidate.id,
@@ -230,19 +236,61 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       duplicate: startResult.duplicate,
       duplicateItems: startResult.duplicateItems,
       ...reconciled,
-      changed: reconciled.changed || iconResult.extracted > 0 || entryTypeChanges > 0,
+      cachedIcons: iconResult.cached,
+      changed: reconciled.changed || entryTypeChanges > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
         `storeIgnored=${storeResult.ignored.length} storeOk=${storeResult.ok} ` +
         `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
-        `icons=${iconResult.extracted}/${iconResult.cached} added=${summary.added} ` +
+        `cachedIcons=${iconResult.cached} added=${summary.added} ` +
         `missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
     return summary;
   } finally {
     scanning = false;
+  }
+}
+
+/** 图标提取独立于扫描，只在设置页手动触发 */
+async function updateIcons(sender: WebContents, force: boolean): Promise<IconUpdateResult> {
+  if (scanning) throw new Error("扫描正在进行");
+  if (iconUpdating) throw new Error("图标更新正在进行");
+  iconUpdating = true;
+  try {
+    const startResult = scanStartMenu();
+    const iconResult = await extractIcons(
+      startResult.candidates,
+      dataRoot(),
+      (progress) => {
+        sender.send("icons:progress", {
+          done: progress.done,
+          total: progress.total,
+          extracted: progress.extracted ?? 0,
+          cached: progress.cached ?? 0,
+          failed: progress.failed ?? 0,
+        });
+      },
+      { force },
+    );
+    const files = startResult.candidates.flatMap((candidate) => {
+      const iconFile = iconResult.icons.get(candidate.id);
+      return iconFile ? [{ id: candidate.id, iconFile }] : [];
+    });
+    const changed = setIconFiles(files);
+    log.info(
+      `[icons] force=${force} extracted=${iconResult.extracted} cached=${iconResult.cached} ` +
+        `failed=${iconResult.failed} changed=${changed}`,
+    );
+    return {
+      extracted: iconResult.extracted,
+      cached: iconResult.cached,
+      failed: iconResult.failed,
+      force,
+    };
+  } finally {
+    iconUpdating = false;
   }
 }
 
@@ -352,6 +400,14 @@ ipcMain.handle("library:groups", () => handleIpc("library:groups", loadGroups));
 
 ipcMain.handle("library:scan", (event) =>
   handleIpcAsync("library:scan", () => runScan(event.sender)),
+);
+
+ipcMain.handle("icons:status", () =>
+  handleIpc("icons:status", (): IconCacheStatus => countIconCache()),
+);
+
+ipcMain.handle("icons:update", (event, force: unknown) =>
+  handleIpcAsync("icons:update", () => updateIcons(event.sender, force === true)),
 );
 
 ipcMain.handle("groups:create", (_event, name: unknown) =>

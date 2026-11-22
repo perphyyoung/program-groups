@@ -22,7 +22,7 @@ export function matchesSearch(
 export function inScope(app: AppEntry, scope: AppScope): boolean {
   if (scope.kind === "ungrouped") return app.groupIds.length === 0;
   if (scope.kind === "group") return app.groupIds.includes(scope.groupId);
-  if (scope.kind === "ignored") return false;
+  if (scope.kind === "ignored" || scope.kind === "settings") return false;
   return true;
 }
 

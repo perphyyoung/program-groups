@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addMembers,
   closeDatabase,
+  countIconCache,
   countMissing,
   createGroup,
   deleteGroup,
@@ -26,6 +27,7 @@ import {
   setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
+  setIconFiles,
   setNote,
   type DiscoveredApp,
 } from "./db";
@@ -67,6 +69,15 @@ describe("database", () => {
 
     const third = reconcile([app("a", "看图王")], "2026-11-20T02:00:00.000Z");
     expect(third.changed).toBe(false);
+  });
+
+  it("图标缓存：只更新已存在应用，统计跟随", () => {
+    reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T00:00:00.000Z");
+    expect(countIconCache()).toEqual({ cached: 0, total: 2 });
+    expect(setIconFiles([{ id: "a", iconFile: "icons/a.png" }])).toBe(1);
+    expect(countIconCache()).toEqual({ cached: 1, total: 2 });
+    expect(listActiveApps().find((item) => item.id === "a")?.iconFile).toBe("icons/a.png");
+    expect(setIconFiles([{ id: "missing", iconFile: "icons/x.png" }])).toBe(0);
   });
 
   it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {

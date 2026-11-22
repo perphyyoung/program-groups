@@ -2,6 +2,9 @@ import type {
   GroupsData,
   GroupSortDirection,
   GroupSortMode,
+  IconCacheStatus,
+  IconUpdateProgress,
+  IconUpdateResult,
   LibraryData,
   ScanProgress,
   ScanSummary,
@@ -11,6 +14,8 @@ export interface Api {
   loadLibrary(): Promise<LibraryData>;
   loadGroups(): Promise<GroupsData>;
   scanLibrary(): Promise<ScanSummary>;
+  iconStatus(): Promise<IconCacheStatus>;
+  updateIcons(force: boolean): Promise<IconUpdateResult>;
   createGroup(name: string): Promise<{ id: string; name: string; sort: number }>;
   renameGroup(id: string, name: string): Promise<void>;
   deleteGroup(id: string): Promise<void>;
@@ -33,6 +38,7 @@ export interface Api {
     link: string | null;
   }): Promise<{ run: boolean; target: boolean; link: boolean }>;
   onScanProgress(callback: (progress: ScanProgress) => void): () => void;
+  onIconProgress(callback: (progress: IconUpdateProgress) => void): () => void;
   log(level: string, message: string): Promise<void>;
 }
 

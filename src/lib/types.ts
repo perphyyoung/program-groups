@@ -99,7 +99,28 @@ export interface ScanSummary {
   added: number;
   updated: number;
   missing: number;
+  cachedIcons: number;
   changed: boolean;
+}
+
+export interface IconCacheStatus {
+  cached: number;
+  total: number;
+}
+
+export interface IconUpdateResult {
+  extracted: number;
+  cached: number;
+  failed: number;
+  force: boolean;
+}
+
+export interface IconUpdateProgress {
+  done: number;
+  total: number;
+  extracted: number;
+  cached: number;
+  failed: number;
 }
 
 export interface ScanProgress {
@@ -115,4 +136,5 @@ export type AppScope =
   | { kind: "all" }
   | { kind: "ungrouped" }
   | { kind: "ignored" }
+  | { kind: "settings" }
   | { kind: "group"; groupId: string };

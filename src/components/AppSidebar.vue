@@ -370,6 +370,19 @@ function onDrop(event: DragEvent, groupId: string): void {
         <span class="text-xs text-slate-500">{{ ignoredCount }}</span>
       </button>
 
+      <button
+        aria-label="设置"
+        class="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition"
+        :class="
+          active.kind === 'settings'
+            ? 'bg-indigo-500/15 text-indigo-200'
+            : 'text-slate-300 hover:bg-white/5'
+        "
+        @click="emit('select', { kind: 'settings' })"
+      >
+        <span>设置</span>
+      </button>
+
       <div class="mt-4 flex items-center justify-between gap-1 px-3">
         <span class="text-xs font-medium uppercase tracking-wide text-slate-600">分组</span>
         <div class="flex items-center gap-1">

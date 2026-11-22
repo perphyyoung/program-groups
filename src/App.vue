@@ -9,6 +9,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import RowContextMenu from "./components/RowContextMenu.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
+import SettingsPage from "./components/SettingsPage.vue";
 import { filterApps } from "./lib/app-filter";
 import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
@@ -25,6 +26,8 @@ import type {
   GroupEntry,
   GroupSortDirection,
   GroupSortMode,
+  IconCacheStatus,
+  IconUpdateProgress,
   IgnoredItem,
   IgnoreReason,
   ScanProgress,
@@ -54,6 +57,9 @@ const scanning = ref(false);
 const scanProgress = ref<ScanProgress | null>(null);
 const showScanProgress = ref(false);
 const scanError = ref<string | null>(null);
+const iconStatus = ref<IconCacheStatus | null>(null);
+const iconUpdating = ref(false);
+const iconProgress = ref<IconUpdateProgress | null>(null);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
@@ -72,6 +78,7 @@ let menuSeq = 0;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let progressTimer: ReturnType<typeof setTimeout> | null = null;
 let unsubscribeScan: (() => void) | null = null;
+let unsubscribeIcons: (() => void) | null = null;
 
 const ungroupedCount = computed(
   () => apps.value.filter((item) => item.groupIds.length === 0).length,
@@ -126,6 +133,7 @@ const currentTitle = computed(() => {
   if (current.kind === "all") return "全部应用";
   if (current.kind === "ungrouped") return "未分组";
   if (current.kind === "ignored") return "已忽略";
+  if (current.kind === "settings") return "设置";
   return groups.value.find((group) => group.id === current.groupId)?.name ?? "分组";
 });
 
@@ -336,6 +344,7 @@ function reasonLabel(reason: IgnoreReason): string {
 function selectScope(next: AppScope): void {
   scope.value = next;
   clearSelection();
+  if (next.kind === "settings") void loadIconStatus();
 }
 
 function ensureTargetGroup(): void {
@@ -433,8 +442,10 @@ async function scan(): Promise<void> {
     ignoredItems.value = summary.ignoredItems;
     duplicateItems.value = summary.duplicateItems;
     if (summary.changed) await load();
+    const iconHint =
+      summary.cachedIcons === 0 && summary.kept > 0 ? "；图标未缓存，可在设置中更新图标缓存" : "";
     showToast(
-      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
+      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}${iconHint}`,
       "info",
     );
   } catch (error) {
@@ -450,6 +461,38 @@ async function scan(): Promise<void> {
 
 function onScanProgress(progress: ScanProgress): void {
   scanProgress.value = progress;
+}
+
+async function loadIconStatus(): Promise<void> {
+  try {
+    iconStatus.value = await window.api.iconStatus();
+  } catch (error) {
+    showToast(`读取图标缓存状态失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function updateIcons(force: boolean): Promise<void> {
+  if (iconUpdating.value) return;
+  iconUpdating.value = true;
+  iconProgress.value = null;
+  try {
+    const result = await window.api.updateIcons(force);
+    await load();
+    await loadIconStatus();
+    showToast(
+      `图标缓存已更新：新增 ${result.extracted}，复用 ${result.cached}，失败 ${result.failed}`,
+      result.failed > 0 ? "error" : "info",
+    );
+  } catch (error) {
+    showToast(`更新图标失败：${errorMessage(error)}`, "error");
+  } finally {
+    iconUpdating.value = false;
+    iconProgress.value = null;
+  }
+}
+
+function onIconProgress(progress: IconUpdateProgress): void {
+  iconProgress.value = progress;
 }
 
 function clearSelection(): void {
@@ -623,6 +666,7 @@ async function confirmDialog(name: string): Promise<void> {
 
 onMounted(async () => {
   unsubscribeScan = window.api.onScanProgress(onScanProgress);
+  unsubscribeIcons = window.api.onIconProgress(onIconProgress);
   try {
     await load();
   } catch (error) {
@@ -633,6 +677,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   unsubscribeScan?.();
+  unsubscribeIcons?.();
   if (toastTimer) clearTimeout(toastTimer);
   if (progressTimer) clearTimeout(progressTimer);
 });
@@ -689,7 +734,7 @@ onBeforeUnmount(() => {
               包含已忽略项
             </label>
           </div>
-          <div class="ml-auto flex items-center gap-2">
+          <div v-if="scope.kind !== 'settings'" class="ml-auto flex items-center gap-2">
             <input
               v-model="search"
               type="search"
@@ -712,7 +757,15 @@ onBeforeUnmount(() => {
           data-testid="main-scroll"
           class="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-pt-12 px-5 pb-5 [scrollbar-gutter:stable]"
         >
-          <div v-if="scope.kind === 'ignored'" class="h-full">
+          <SettingsPage
+            v-if="scope.kind === 'settings'"
+            :status="iconStatus"
+            :busy="iconUpdating"
+            :progress="iconProgress"
+            @update="updateIcons"
+          />
+
+          <div v-else-if="scope.kind === 'ignored'" class="h-full">
             <div
               v-if="ignoredGroups.length > 0 || manualIgnoredMatches.length > 0"
               class="space-y-2 pt-5"
@@ -857,6 +910,7 @@ onBeforeUnmount(() => {
         </div>
 
         <footer
+          v-if="scope.kind !== 'settings'"
           class="flex items-center justify-between border-t border-white/10 px-5 py-2 text-xs text-slate-500"
         >
           <span>

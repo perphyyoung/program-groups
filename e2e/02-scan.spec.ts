@@ -2,18 +2,20 @@ import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "./fixtures";
 
-test("扫描应用、图标、已忽略与重复快捷方式", async ({ slot }) => {
+test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
   const { page } = slot;
 
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();
-  await expect(page.getByText(/^扫描完成：新增 1，缺失 0，忽略 1，重复 1$/u)).toBeVisible();
+  await expect(
+    page.getByText(
+      /^扫描完成：新增 1，缺失 0，忽略 1，重复 1；图标未缓存，可在设置中更新图标缓存$/u,
+    ),
+  ).toBeVisible();
 
-  const appIcon = page.getByRole("img", { name: "测试应用", exact: true });
-  await expect(appIcon).toHaveAttribute("src", /^pg-icon:\/\//u);
-  await expect
-    .poll(() => appIcon.evaluate((node) => (node as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
+  /* 扫描只读缓存，首次没有图标，显示首字母占位 */
+  await expect(appCard.getByRole("img", { name: "测试应用", exact: true })).toHaveCount(0);
+  await expect(appCard.getByText("测", { exact: true })).toBeVisible();
 
   const ignoredNav = page.getByRole("button", { name: "已忽略", exact: true });
   await expect(ignoredNav).toContainText("1");

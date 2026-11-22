@@ -3,6 +3,9 @@ import type {
   GroupsData,
   GroupSortDirection,
   GroupSortMode,
+  IconCacheStatus,
+  IconUpdateProgress,
+  IconUpdateResult,
   LibraryData,
   ScanProgress,
   ScanSummary,
@@ -12,6 +15,9 @@ contextBridge.exposeInMainWorld("api", {
   loadLibrary: (): Promise<LibraryData> => ipcRenderer.invoke("library:load"),
   loadGroups: (): Promise<GroupsData> => ipcRenderer.invoke("library:groups"),
   scanLibrary: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scan"),
+  iconStatus: (): Promise<IconCacheStatus> => ipcRenderer.invoke("icons:status"),
+  updateIcons: (force: boolean): Promise<IconUpdateResult> =>
+    ipcRenderer.invoke("icons:update", force),
   createGroup: (name: string) => ipcRenderer.invoke("groups:create", name),
   renameGroup: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke("groups:rename", id, name),
@@ -48,6 +54,11 @@ contextBridge.exposeInMainWorld("api", {
     const listener = (_event: unknown, progress: ScanProgress): void => callback(progress);
     ipcRenderer.on("scan:progress", listener);
     return () => ipcRenderer.removeListener("scan:progress", listener);
+  },
+  onIconProgress: (callback: (progress: IconUpdateProgress) => void): (() => void) => {
+    const listener = (_event: unknown, progress: IconUpdateProgress): void => callback(progress);
+    ipcRenderer.on("icons:progress", listener);
+    return () => ipcRenderer.removeListener("icons:progress", listener);
   },
   log: (level: string, message: string): Promise<void> =>
     ipcRenderer.invoke("log:renderer", level, message),

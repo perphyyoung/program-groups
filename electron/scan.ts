@@ -208,11 +208,34 @@ export interface IconExtractResult {
   failed: number;
 }
 
+export interface CachedIconResult {
+  icons: Map<string, string>;
+  cached: number;
+}
+
+/** 扫描只读缓存：不 stat 源文件、不提取、不写 miss */
+export function resolveCachedIcons(
+  candidates: ShortcutCandidate[],
+  dataDir: string,
+): CachedIconResult {
+  const icons = new Map<string, string>();
+  let cached = 0;
+  for (const candidate of candidates) {
+    const iconFile = `icons/${candidate.id}.png`;
+    if (existsSync(join(dataDir, iconFile))) {
+      icons.set(candidate.id, iconFile);
+      cached += 1;
+    }
+  }
+  return { icons, cached };
+}
+
 /** 提取图标到 <data>/icons/<appId>.png，返回图标路径与提取统计 */
 export async function extractIcons(
   candidates: ShortcutCandidate[],
   dataDir: string,
   onProgress?: (progress: ScanProgress) => void,
+  options: { force?: boolean } = {},
 ): Promise<IconExtractResult> {
   const iconsDir = join(dataDir, "icons");
   await mkdir(iconsDir, { recursive: true });
@@ -222,6 +245,7 @@ export async function extractIcons(
   let extracted = 0;
   let cached = 0;
   let failed = 0;
+  const force = options.force === true;
 
   const worker = async (): Promise<void> => {
     while (true) {
@@ -243,17 +267,18 @@ export async function extractIcons(
         const sourceKey = String(sourceMtime);
 
         let iconIsFresh = false;
-        if (existsSync(iconPath)) {
+        if (!force && existsSync(iconPath)) {
           // eslint-disable-next-line no-await-in-loop -- 每个 worker 内串行处理，避免同时读大量图标
           const iconStat = await stat(iconPath);
           iconIsFresh = iconStat.mtimeMs >= sourceMtime;
         }
 
-        if (iconIsFresh) {
+        if (!force && iconIsFresh) {
           cached += 1;
           icons.set(candidate.id, `icons/${candidate.id}.png`);
         } else {
-          const missIsFresh = existsSync(missPath) && readFileSync(missPath, "utf8") === sourceKey;
+          const missIsFresh =
+            !force && existsSync(missPath) && readFileSync(missPath, "utf8") === sourceKey;
           if (missIsFresh) {
             failed += 1;
             if (existsSync(iconPath)) icons.set(candidate.id, `icons/${candidate.id}.png`);

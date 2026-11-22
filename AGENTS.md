@@ -18,6 +18,7 @@
 - 分组排序：手动排序下仅行首握把可拖，插入线提示落点；名称 / 创建顺序只改变展示，不覆盖 `groups.sort`；正/倒序全局持久化，手动倒序拖拽按可见顺序反写。
 - 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。
 - 开始菜单扫描根目录是 `Start Menu` 本身，不是 `Start Menu\Programs`：根级 `.lnk`（如 SumatraPDF）必须纳入，`Programs` 子目录递归覆盖。
+- 图标提取与扫描分离：扫描只读 `<data>/icons` 已有缓存，不提取图标；提取只在设置页手动触发，默认增量，可勾选全量重建。
 - 行组件命名：通用布局用 `RowLayout`，领域行用 `AppRow` / `IgnoredShortcutRow` / `ManualIgnoredAppRow`，不再使用 `ListRow` / `AppListRow`。
 
 ## 文档分工

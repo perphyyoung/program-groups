@@ -267,6 +267,37 @@ export function setEntryTypes(entries: { id: string; type: EntryType }[]): numbe
   return changed;
 }
 
+/** 只更新已存在应用的图标缓存路径，不新增行 */
+export function setIconFiles(entries: { id: string; iconFile: string }[]): number {
+  if (entries.length === 0) return 0;
+  const database = requireDb();
+  const update = database.prepare(
+    "UPDATE apps SET icon_file = ? WHERE id = ? AND (icon_file IS NULL OR icon_file <> ?)",
+  );
+  let changed = 0;
+  database.exec("BEGIN");
+  try {
+    for (const entry of entries) {
+      changed += Number(update.run(entry.iconFile, entry.id, entry.iconFile).changes);
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return changed;
+}
+
+/** 可提取图标的活跃应用（start / exe），Store AUMID 不计入分母 */
+export function countIconCache(): { cached: number; total: number } {
+  const row = requireDb()
+    .prepare(
+      "SELECT COUNT(*) AS total, COUNT(icon_file) AS cached FROM apps WHERE status = 'active' AND entry_type = 'app' AND launch_kind <> 'aumid'",
+    )
+    .get() as unknown as { total: number; cached: number };
+  return { cached: Number(row.cached), total: Number(row.total) };
+}
+
 export function listManualIgnoredIds(): Set<string> {
   const rows = requireDb().prepare("SELECT app_id FROM manual_ignores").all() as unknown as {
     app_id: string;
