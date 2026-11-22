@@ -90,7 +90,7 @@ const filteredApps = computed(() =>
 
 const ignoredGroups = computed(() =>
   groupIgnoredItems([...ignoredItems.value, ...duplicateItems.value], search.value, (item) =>
-    shortcutNote(item.shortcutPath),
+    shortcutNote(item.launchPath),
   ),
 );
 
@@ -110,9 +110,7 @@ const manualIgnoredMatches = computed(() => {
 /** 全部应用栏的已忽略项：只在勾选后参与展示与搜索，重复项不列入 */
 const ignoredMatches = computed(() =>
   includeIgnored.value && scope.value.kind === "all"
-    ? filterIgnoredItems(ignoredItems.value, search.value, (item) =>
-        shortcutNote(item.shortcutPath),
-      )
+    ? filterIgnoredItems(ignoredItems.value, search.value, (item) => shortcutNote(item.launchPath))
     : [],
 );
 
@@ -188,8 +186,9 @@ async function revealShortcutPath(path: string): Promise<void> {
   }
 }
 
-function revealShortcut(item: IgnoredItem): Promise<void> {
-  return revealShortcutPath(item.shortcutPath);
+async function revealShortcut(item: IgnoredItem): Promise<void> {
+  if (!item.shortcutPath) return;
+  await revealShortcutPath(item.shortcutPath);
 }
 
 async function revealPath(path: string): Promise<void> {
@@ -203,7 +202,10 @@ async function revealPath(path: string): Promise<void> {
 
 async function runShortcut(item: IgnoredItem): Promise<void> {
   try {
-    const result = await window.api.launchShortcut(item.shortcutPath);
+    const result =
+      item.launchKind === "aumid"
+        ? await window.api.launchStore(item.launchPath)
+        : await window.api.launchShortcut(item.launchPath);
     if (!result.ok) showToast(`启动失败：${result.error ?? "未知错误"}`, "error");
   } catch (error) {
     showToast(errorMessage(error), "error");
@@ -217,6 +219,7 @@ function appMenuSpec(app: AppEntry): RowMenuSpec {
       target: app.exePath,
       link: app.launchKind === "lnk" ? app.launchPath : null,
     },
+    canRun: app.launchKind === "aumid",
     actions: {
       run: () => void launch(app),
       revealTarget: () => void revealPath(app.exePath),
@@ -230,10 +233,11 @@ function appMenuSpec(app: AppEntry): RowMenuSpec {
 function shortcutMenuSpec(item: IgnoredItem): RowMenuSpec {
   return {
     paths: {
-      run: item.shortcutPath,
+      run: item.launchPath,
       target: item.target || null,
-      link: item.shortcutPath,
+      link: item.shortcutPath ?? null,
     },
+    canRun: item.launchKind === "aumid",
     actions: {
       run: () => void runShortcut(item),
       revealTarget: () => {
@@ -258,6 +262,7 @@ async function openRowMenu(request: RowContextRequest, spec: RowMenuSpec): Promi
   } catch {
     /* 路径检查失败时按路径存在处理，点击后再给出失败提示 */
   }
+  if (spec.canRun) exists.run = true;
   if (seq !== menuSeq) return;
   menuItems.value = buildRowMenu(spec.paths, exists, spec.actions);
   await nextTick();
@@ -764,12 +769,12 @@ onBeforeUnmount(() => {
                 </p>
                 <IgnoredShortcutRow
                   v-for="item in group.items"
-                  :key="item.shortcutPath"
+                  :key="item.launchPath"
                   :item="item"
-                  :note="shortcutNote(item.shortcutPath)"
+                  :note="shortcutNote(item.launchPath)"
                   :meta-label="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
                   :meta-title="item.keptAs ? `已收录为「${item.keptAs}」` : undefined"
-                  @save-note="saveShortcutNote(item.shortcutPath, $event)"
+                  @save-note="saveShortcutNote(item.launchPath, $event)"
                   @run="runShortcut(item)"
                   @contextmenu="openRowMenu($event, shortcutMenuSpec(item))"
                 />
@@ -833,11 +838,11 @@ onBeforeUnmount(() => {
               />
               <IgnoredShortcutRow
                 v-for="item in ignoredMatches"
-                :key="item.shortcutPath"
+                :key="item.launchPath"
                 :item="item"
-                :note="shortcutNote(item.shortcutPath)"
+                :note="shortcutNote(item.launchPath)"
                 :meta-label="reasonLabel(item.reason)"
-                @save-note="saveShortcutNote(item.shortcutPath, $event)"
+                @save-note="saveShortcutNote(item.launchPath, $event)"
                 @run="runShortcut(item)"
                 @contextmenu="openRowMenu($event, shortcutMenuSpec(item))"
               />

@@ -3,7 +3,16 @@ import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./i
 import type { IgnoredItem, IgnoreReason } from "./types";
 
 function item(name: string, reason: IgnoreReason, target = "C:\\Apps\\tool.exe"): IgnoredItem {
-  return { name, target, shortcutPath: `C:\\Start Menu\\${name}.lnk`, reason };
+  const shortcutPath = `C:\\Start Menu\\${name}.lnk`;
+  return {
+    name,
+    target,
+    shortcutPath,
+    reason,
+    source: "start",
+    launchKind: "lnk",
+    launchPath: shortcutPath,
+  };
 }
 
 describe("groupIgnoredItems", () => {
@@ -41,11 +50,20 @@ describe("groupIgnoredItems", () => {
   it("搜索已忽略项备注", () => {
     const items = [item("A", "help"), item("B", "help")];
     const notes = new Map([["C:\\Start Menu\\A.lnk", "清理工具"]]);
-    const noteOf = (entry: IgnoredItem) => notes.get(entry.shortcutPath);
+    const noteOf = (entry: IgnoredItem) => notes.get(entry.launchPath);
     expect(filterIgnoredItems(items, "清理", noteOf).map((entry) => entry.name)).toEqual(["A"]);
     expect(groupIgnoredItems(items, "清理", noteOf)[0]?.items.map((entry) => entry.name)).toEqual([
       "A",
     ]);
+  });
+
+  it("非 Store 打包应用单独分组", () => {
+    const groups = groupIgnoredItems(
+      [item("系统应用", "store-other"), item("卸载工具", "uninstall")],
+      "",
+    );
+    expect(groups.map((group) => group.reason)).toEqual(["uninstall", "store-other"]);
+    expect(groups[1]?.label).toBe("非 Store 打包应用");
   });
 
   it("每个原因都有中文标签", () => {

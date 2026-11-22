@@ -68,6 +68,7 @@ export type IgnoreReason =
   | "website"
   | "system"
   | "installer"
+  | "store-other"
   | "unreadable"
   | "invalid-target"
   | "missing-target"
@@ -77,9 +78,13 @@ export type IgnoreReason =
 export interface IgnoredItem {
   name: string;
   target: string;
-  /** 快捷方式 .lnk 的绝对路径，用于在资源管理器中定位 */
-  shortcutPath: string;
   reason: IgnoreReason;
+  source: AppSource;
+  launchKind: AppLaunchKind;
+  /** .lnk 绝对路径或 Store AUMID */
+  launchPath: string;
+  /** 快捷方式 .lnk 的绝对路径；Store 项没有 */
+  shortcutPath?: string;
   /** 仅重复项：与该快捷方式指向同一应用、且已被收录的名称 */
   keptAs?: string;
 }

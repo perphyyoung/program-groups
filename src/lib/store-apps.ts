@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import type { ScannedApp } from "./types";
+import type { IgnoredItem, ScannedApp } from "./types";
 
 export interface StoreAppRecord {
   name: string;
   aumid: string;
+  signatureKind: string;
 }
 
 export function appIdForAumid(aumid: string): string {
@@ -17,24 +18,48 @@ export function parseStoreApps(raw: unknown): StoreAppRecord[] {
   const byAumid = new Map<string, StoreAppRecord>();
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
-    const record = item as { Name?: unknown; AppID?: unknown };
+    const record = item as { Name?: unknown; AppID?: unknown; SignatureKind?: unknown };
     if (typeof record.Name !== "string" || typeof record.AppID !== "string") continue;
     const name = record.Name.trim();
     const aumid = record.AppID.trim();
     if (!name || !aumid.includes("!")) continue;
-    byAumid.set(aumid, { name, aumid });
+    const signatureKind =
+      typeof record.SignatureKind === "string" && record.SignatureKind.trim()
+        ? record.SignatureKind.trim()
+        : "未知";
+    byAumid.set(aumid, { name, aumid, signatureKind });
   }
   return Array.from(byAumid.values());
 }
 
-export function toStoreApps(records: StoreAppRecord[]): ScannedApp[] {
-  return records.map((record) => ({
-    id: appIdForAumid(record.aumid),
-    name: record.name,
-    launchPath: record.aumid,
-    launchKind: "aumid",
-    exePath: "",
-    source: "store",
-    iconFile: null,
-  }));
+/** 只有 Store 签名进入应用；其他打包应用统一进已忽略 */
+export function classifyStoreApps(records: StoreAppRecord[]): {
+  apps: ScannedApp[];
+  ignored: IgnoredItem[];
+} {
+  const apps: ScannedApp[] = [];
+  const ignored: IgnoredItem[] = [];
+  for (const record of records) {
+    if (record.signatureKind === "Store") {
+      apps.push({
+        id: appIdForAumid(record.aumid),
+        name: record.name,
+        launchPath: record.aumid,
+        launchKind: "aumid",
+        exePath: "",
+        source: "store",
+        iconFile: null,
+      });
+    } else {
+      ignored.push({
+        name: record.name,
+        target: record.aumid,
+        reason: "store-other",
+        source: "store",
+        launchKind: "aumid",
+        launchPath: record.aumid,
+      });
+    }
+  }
+  return { apps, ignored };
 }

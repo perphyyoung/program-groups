@@ -3,7 +3,16 @@ import { entryTypesForIgnored } from "./entry-types";
 import type { IgnoredItem } from "./types";
 
 function ignored(target: string, reason: IgnoredItem["reason"]): IgnoredItem {
-  return { name: reason, target, shortcutPath: `${target}.lnk`, reason };
+  const shortcutPath = `${target}.lnk`;
+  return {
+    name: reason,
+    target,
+    shortcutPath,
+    reason,
+    source: "start",
+    launchKind: "lnk",
+    launchPath: shortcutPath,
+  };
 }
 
 describe("entryTypesForIgnored", () => {

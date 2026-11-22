@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("apps:revealShortcut", path),
   launchShortcut: (path: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("shortcuts:launch", path),
+  launchStore: (aumid: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("store:launch", aumid),
   revealPath: (path: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("paths:reveal", path),
   checkPaths: (paths: {

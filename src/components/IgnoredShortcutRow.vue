@@ -56,7 +56,7 @@ function firstChar(name: string): string {
     <template #name>
       <span class="flex min-w-0 items-center gap-1.5">
         <span class="truncate">{{ item.name || "（无名称）" }}</span>
-        <SourceBadge source="start" />
+        <SourceBadge :source="item.source" />
       </span>
     </template>
 

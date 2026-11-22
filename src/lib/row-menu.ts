@@ -28,6 +28,8 @@ export interface RowMenuItem {
 export interface RowMenuSpec {
   paths: RowMenuPaths;
   actions: RowMenuActions;
+  /** AUMID 等非文件启动项：跳过路径检查，直接允许启动 */
+  canRun?: boolean;
 }
 
 export interface RowContextRequest {

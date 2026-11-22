@@ -25,6 +25,7 @@ export interface Api {
   setNote(key: string, note: string): Promise<void>;
   revealShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
   launchShortcut(path: string): Promise<{ ok: boolean; error?: string }>;
+  launchStore(aumid: string): Promise<{ ok: boolean; error?: string }>;
   revealPath(path: string): Promise<{ ok: boolean; error?: string }>;
   checkPaths(paths: {
     run: string | null;

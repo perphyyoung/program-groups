@@ -71,6 +71,23 @@ function relativeToRoot(lnkPath: string, roots: string[]): string {
   return basename(lnkPath);
 }
 
+function ignored(
+  name: string,
+  target: string,
+  shortcutPath: string,
+  reason: IgnoredItem["reason"],
+): IgnoredItem {
+  return {
+    name,
+    target,
+    shortcutPath,
+    reason,
+    source: "start",
+    launchKind: "lnk",
+    launchPath: shortcutPath,
+  };
+}
+
 /** 扫描开始菜单，返回可启动应用候选；过滤与去重都在纯函数里 */
 export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): StartMenuScanResult {
   const roots = startMenuRoots().filter((root) => existsSync(root));
@@ -95,27 +112,27 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
       iconLocation = details.icon?.trim() || null;
       iconIndex = typeof details.iconIndex === "number" ? details.iconIndex : null;
     } catch {
-      ignoredItems.push({ name, target: "", shortcutPath: lnkPath, reason: "unreadable" });
+      ignoredItems.push(ignored(name, "", lnkPath, "unreadable"));
       return;
     }
 
     if (!target || extname(target).toLowerCase() !== ".exe") {
-      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: "invalid-target" });
+      ignoredItems.push(ignored(name, target, lnkPath, "invalid-target"));
       return;
     }
     if (!existsSync(target)) {
-      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: "missing-target" });
+      ignoredItems.push(ignored(name, target, lnkPath, "missing-target"));
       return;
     }
     if (!name) {
-      ignoredItems.push({ name: "", target, shortcutPath: lnkPath, reason: "invalid-name" });
+      ignoredItems.push(ignored("", target, lnkPath, "invalid-name"));
       return;
     }
 
     const relativePath = relativeToRoot(lnkPath, roots);
     const ignoreReason = isIgnoredShortcut(name, target, shortcutArgs, relativePath);
     if (ignoreReason) {
-      ignoredItems.push({ name, target, shortcutPath: lnkPath, reason: ignoreReason });
+      ignoredItems.push(ignored(name, target, lnkPath, ignoreReason));
       return;
     }
 
@@ -140,12 +157,7 @@ export function scanStartMenu(onProgress?: (progress: ScanProgress) => void): St
   for (const candidate of candidates) {
     const kept = pickedById.get(candidate.id);
     if (kept === candidate) continue;
-    const item: IgnoredItem = {
-      name: candidate.name,
-      target: candidate.targetPath,
-      shortcutPath: candidate.launchPath,
-      reason: "duplicate",
-    };
+    const item = ignored(candidate.name, candidate.targetPath, candidate.launchPath, "duplicate");
     if (kept) item.keptAs = kept.name;
     duplicateItems.push(item);
   }

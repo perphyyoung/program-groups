@@ -223,10 +223,10 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       entryTypesForIgnored(startResult.ignoredItems, discoveredIds),
     );
     const summary: ScanSummary = {
-      scanned: startResult.scanned + storeResult.apps.length,
+      scanned: startResult.scanned + storeResult.apps.length + storeResult.ignored.length,
       kept: discovered.length,
-      ignored: startResult.ignored,
-      ignoredItems: startResult.ignoredItems,
+      ignored: startResult.ignored + storeResult.ignored.length,
+      ignoredItems: [...startResult.ignoredItems, ...storeResult.ignored],
       duplicate: startResult.duplicate,
       duplicateItems: startResult.duplicateItems,
       ...reconciled,
@@ -235,7 +235,8 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
-        `storeOk=${storeResult.ok} ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
+        `storeIgnored=${storeResult.ignored.length} storeOk=${storeResult.ok} ` +
+        `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
         `icons=${iconResult.extracted}/${iconResult.cached} added=${summary.added} ` +
         `missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
@@ -274,6 +275,11 @@ function assertName(value: unknown): string {
 
 function assertId(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) throw new Error("ID 无效");
+  return value;
+}
+
+function assertAumid(value: unknown): string {
+  if (typeof value !== "string" || !value.includes("!")) throw new Error("AUMID 无效");
   return value;
 }
 
@@ -420,6 +426,17 @@ ipcMain.handle("apps:launch", (_event, appId: unknown) =>
     const error = await shell.openPath(appRecord.launchPath);
     if (error) return { ok: false, error };
     return { ok: true };
+  }),
+);
+
+ipcMain.handle("store:launch", (_event, aumid: unknown) =>
+  handleIpcAsync("store:launch", async () => {
+    try {
+      await launchAumid(assertAumid(aumid));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }),
 );
 
