@@ -2,7 +2,7 @@
 
 ## 速览
 
-一句话：MVP 只扫开始菜单，做「未分组池 + 手动多对多分组」；注册表、Store、托盘等都在后续。
+一句话：扫描开始菜单与 Store，做「未分组池 + 手动多对多分组」；注册表经实测不做，托盘等仍在后续。
 
 | 章节 | 内容 | 读它来判断 |
 | --- | --- | --- |
@@ -18,9 +18,9 @@
 | [10 验收标准](#10-验收标准) | 可验证的行为清单 | 什么算完成 |
 | [11 决策记录](#11-决策记录) | 决策记录和结论 | 关键取舍及原因 |
 | [12 落地已知坑](#12-落地已知坑) | 环境与 API 的坑 | 避免重复踩坑 |
-| [13 后续实现：注册表扫描](#13-后续实现注册表扫描) | 暂不做的注册表方案 | 下一阶段的上游补全 |
+| [13 不做注册表扫描](#13-不做注册表扫描) | 实测结论与原因 | 为什么不上游补全 |
 | [14 后续细化](#14-后续细化) | 功能路线 | 后续排期 |
-| [15 实现状态](#15-实现状态2026-11-20) | 验证结果与未执行项 | 当前做到哪一步 |
+| [15 实现状态](#15-实现状态) | 验证结果与未执行项 | 当前做到哪一步 |
 
 阅读顺序建议：1–2 看边界，3–6 看核心链路，7–10 看实现与验收，11–15 看决策、坑、后续与状态。
 
@@ -53,8 +53,8 @@ pg 的核心行为：**把本机常规安装的应用自动收进「未分组」
 
 不做（留后续）：
 
-- 注册表扫描、无开始菜单快捷方式的安装项
-- Microsoft Store / Appx 应用、绿色软件目录、手动添加 exe
+- 注册表扫描（本机实测没有超出开始菜单与 Store 的真实应用，明确不做）
+- 绿色软件目录扫描、手动添加 exe
 - 自动分类、规则引擎、智能建议
 - 托盘常驻、全局热键、开机自启
 - 应用别名、分组图标 / 颜色、组内拖拽排序、分组嵌套
@@ -87,7 +87,7 @@ CREATE TABLE apps (
   launch_kind      TEXT NOT NULL,              -- 'lnk' | 'exe' | 'aumid'
   exe_path         TEXT NOT NULL,              -- 规范化后的真实 exe 路径，用于去重；AUMID 为空
   icon_file        TEXT,                       -- 相对数据目录的 icons/xxx.png
-  source           TEXT NOT NULL DEFAULT 'start', -- 'start' | 'store' | 'registry'
+  source           TEXT NOT NULL DEFAULT 'start', -- 'start' | 'store'
   status           TEXT NOT NULL DEFAULT 'active', -- 'active' | 'missing'
   entry_type       TEXT NOT NULL DEFAULT 'app',    -- 'app' | 'uninstaller' | 'installer' | 'system'
   first_seen_at    TEXT NOT NULL,
@@ -149,19 +149,19 @@ WHERE a.status = 'active'
 | 来源 | 用途 | 覆盖 | 限制 |
 | --- | --- | --- | --- |
 | 开始菜单 `.lnk`（用户 + 公共） | 主列表、启动入口、友好名称 | 常规安装且有开始菜单快捷方式的应用 | 无快捷方式的应用缺失；含卸载/帮助/网址等伪快捷方式 |
+| Store / UWP（AUMID） | 打包应用启动入口 | Store / Developer 签名的启动项 | 无 exe 启动路径；其他签名进已忽略 |
 
-MVP 只扫描开始菜单，因此：
+- 开始菜单 `.lnk` 能直接启动、名称中文化好、图标好取，是主来源。
+- Store 应用走 AUMID 启动，exe 路径不参与启动。
+- 注册表不做：本机实测 637 个卸载表项中可用启动 104 个，其中 99 个开始菜单已有；App Paths 169 项也没有超出 `start + store` 的真实应用。
+- 没有快捷方式的应用不会出现；后续只考虑手动添加 exe，不再做注册表扫描。
 
-- 开始菜单 `.lnk` 是唯一来源，能直接启动、名称中文化好、图标好取。
-- 注册表先不做：它虽然能补全安装清单，但不可启动项、系统组件、运行库和 DisplayIcon 解析都会显著增加复杂度，MVP 不值得。
-- 没有开始菜单快捷方式的应用不会出现；后续用注册表扫描和手动添加 exe 兜底。
-
-这是 MVP 的明确取舍：**先保证每个条目都能启动，再追求「安装清单 100% 完整」。**
+明确取舍：**先保证每个条目都能启动，再追求「安装清单 100% 完整」；不为了补全引入大量不可启动噪声。**
 
 ### 4.2 开始菜单扫描
 
-- 根目录：`%APPDATA%\Microsoft\Windows\Start Menu\Programs`、`%ProgramData%\Microsoft\Windows\Start Menu\Programs`。
-- 递归查找 `.lnk`；跳过 `Startup` 目录。
+- 根目录：`%APPDATA%\Microsoft\Windows\Start Menu`、`%ProgramData%\Microsoft\Windows\Start Menu`。
+- 递归查找 `.lnk`；跳过 `Startup` 目录。根目录本身要扫，`SumatraPDF.lnk` 这类根级快捷方式不能漏。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
 - 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`；扫描结束后底部居中提示「扫描完成：新增 N，缺失 M，忽略 I，重复 D」。
 
@@ -196,7 +196,7 @@ MVP 只扫描开始菜单，因此：
 - 重复快捷方式不进入侧栏计数，但作为独立分组「重复快捷方式」排在最后，标注已收录为哪个应用；每行可「启动」，或用行菜单「打开链接路径」定位 `.lnk`，由用户自行决定是否删除。
 - 全部应用栏提供「包含已忽略项」复选框，默认不勾选；勾选后在应用列表下方追加已忽略项（含手动忽略应用）并参与搜索，规则项不可选中、不可归组，但可启动与查看路径；手动忽略可取消，重复快捷方式不列入。
 - 应用行尾提供「手动忽略」：应用从各栏收起，已忽略栏顶部出现「手动忽略」组；状态落库，拖入分组时自动恢复。
-- Store / Developer 签名应用作为 `store` 来源进入列表；其他打包应用（System / Enterprise / None / 未知）进入已忽略的「Store 自动忽略应用」组。行名称旁显示来源徽标 `start` / `store` / `registry`。
+- Store / Developer 签名应用作为 `store` 来源进入列表；其他打包应用（System / Enterprise / None / 未知）进入已忽略的「Store 自动忽略应用」组。行名称旁显示来源徽标 `start` / `store`。
 - 分组行尾提供「⋯」菜单：重命名分组、删除分组；右键分组行打开同一菜单。删除确认显示组内应用数与归属后果，只删分组与归属，不卸载应用。
 - 「未分组」不可删除、不可改名；它是查询结果，不是数据。
 - 归组后计数实时减少；全部归完显示空态「所有应用都已归类」。
@@ -374,7 +374,7 @@ MVP 只扫描开始菜单，因此：
 - 扫描后 Store / Developer 签名应用出现，来源徽标为 `store`；其他打包应用进入已忽略的「Store 自动忽略应用」；可分组、备注、启动；卸载后刷新标缺失，路径入口置灰。
 - 行右键菜单固定「启动 / 打开目标路径 / 打开链接路径」，缺失项置灰；备注输入框内保留系统右键菜单。
 - 删除开始菜单快捷方式后刷新：真实应用从列表消失、底部显示缺失数；卸载器 / 安装器 / 系统工具不计入缺失；重新放回后刷新，应用回到原分组。
-- 开始菜单里没有快捷方式的已安装应用不会出现（MVP 已知限制，后续用注册表扫描与手动添加兜底）。
+- 开始菜单里没有快捷方式的已安装应用不会出现（已知限制，后续用「手动添加 exe」兜底；注册表实测无新增，不做）。
 - `pnpm check`（format / lint / type-check / test / build）全绿；`pnpm e2e` 通过。
 
 ## 11. 决策记录
@@ -392,7 +392,7 @@ MVP 只扫描开始菜单，因此：
 | D9 | 托盘 / 热键 | MVP 不做，单窗口 + 开始菜单打开 | 2026-11-20 |
 | D10 | 应用别名 | MVP 不做；先解决「找不到」，再解决「名字丑」 | 2026-11-20 |
 | D11 | 分组排序 | 按创建顺序，不做拖拽排序；分组内按名称 | 2026-11-20 |
-| D12 | 注册表扫描 | MVP 不做，只扫开始菜单；后续再加，避免不可启动项与编码/解析复杂度 | 2026-11-20 |
+| D12 | 注册表扫描 | 不做：实测 637 个卸载表项仅 104 个可用启动，其中 99 个开始菜单已有；App Paths 也没有真实新增 | 2026-11-22 |
 | D13 | 分组图标 / 颜色 | MVP 不做，只显示名称与计数 | 2026-11-20 |
 | D14 | 卸载项过滤 | 详见 [算法设计.md](./算法设计.md)，本文不重复判断逻辑 | 2026-11-20 |
 | D15 | 已忽略栏 | 与「未分组」平级；忽略项不落库，只来自最近一次扫描结果，展示名称、目标与原因；重复项单独计数 | 2026-11-20 |
@@ -409,41 +409,21 @@ MVP 只扫描开始菜单，因此：
 - renderer 不能 import 任何 `node:` 模块；搜索、计数、名称清理等纯函数放 `src/lib`，主进程与渲染进程共用。
 - 精简系统可能没有公共开始菜单目录；目录不存在时跳过并记 info 日志，不报错。
 
-## 13. 后续实现：注册表扫描
+## 13. 不做注册表扫描
 
-MVP 只扫开始菜单，注册表的初步方案保留在这里，后续实现时直接按此展开。
+结论：不做。注册表扫描只能补「没有开始菜单快捷方式」的安装项，但本机实测没有这类真实应用。
 
-实现前先做数据模型迁移（`schema_version = 2`），给 `apps` 增加字段：`publisher`、`version`、`install_location`、`uninstall_string`。
+实测（2026-11-22）：
 
-- 读取四个位置（HKLM / HKCU 各含 64 位与 32 位视图）：
-  - `HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*`
-  - `HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*`
-  - `HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*`
-  - `HKCU:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*`
-- 用 PowerShell 一次性输出 JSON，避免 `reg.exe` 的编码问题：
-  - 脚本放 `resources/scripts/list-installed.ps1`；
-  - `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ...`；
-  - 输出 `ConvertTo-Json -Compress`，Node 侧 `JSON.parse`，读取前去掉 UTF-8 BOM。
-- 取字段：`DisplayName`、`DisplayIcon`、`InstallLocation`、`DisplayVersion`、`Publisher`、`UninstallString`、`SystemComponent`、`ParentKeyName`、`ReleaseType`、`PSChildName`。
-- 过滤：
-  - `DisplayName` 为空；
-  - `SystemComponent = 1`；
-  - `ParentKeyName` 非空（补丁/子组件）；
-  - `ReleaseType` 属于 Update / Hotfix / Security Update / Update Rollup；
-  - `DisplayName` 匹配 `^KB\d+`、`Microsoft Visual C++ .* Redistributable`、`\.NET .* (Runtime|SDK)`、`Language Pack`、`Windows SDK`、`Driver`。
-- 解析 `DisplayIcon`：
-  - 去掉包裹引号；
-  - 去掉末尾的 `,索引`（如 `C:\App\app.exe,0`）；
-  - 展开 `%ProgramFiles%` 等环境变量；
-  - 结果是存在的 `.exe` 才作为启动目标。
-- 与开始菜单合并：按规范化后的 exe 路径匹配；匹配上只补全元数据，不新增条目；匹配不上且 DisplayIcon 是有效 exe 的，作为 `launch_kind = 'exe'` 的新增条目。
-- 仍解析不出可启动 exe 的安装记录不入库，只计入忽略数。
-- 后续验收：开始菜单没有快捷方式的常规安装应用，能通过注册表出现在未分组；运行库、补丁、驱动、系统组件不出现。
+- 四个 Uninstall 位置共 637 项；按 DisplayName / SystemComponent / ParentKeyName / ReleaseType / 安装缓存 / 安装与卸载器 / 系统目录 / 辅助程序过滤后，可用启动 104 个。
+- 104 个中 99 个开始菜单已有同名快捷方式；剩余 5 个为 Store/AUMID 应用（照片、Copilot）、旧 Java、NSIS、SumatraPDF。SumatraPDF 实际有根级 `Start Menu\SumatraPDF.lnk`，扫描根目录修正后已覆盖。
+- App Paths 169 项：150 个 exe 存在，其中 103 项与开始菜单同名 / exe 相同 / 重复，18 项是同目录辅助（Calibre、Java、WPS），29 项「独立」也全是系统程序、Office 辅助进程、Store 应用或命令行工具，没有新的真实应用。
+- 噪声主要来自运行库、系统组件、安装器、更新缓存与辅助进程；为它们增加 `publisher` / `version` / `install_location` 字段不划算。
+
+因此：注册表不进入扫描链路；无快捷方式的应用由后续「手动添加 exe」兜底。
 
 ## 14. 后续细化
 
-- 注册表扫描：补全无开始菜单快捷方式的安装项，并补充发布者 / 版本
-- Microsoft Store / Appx 应用（AUMID 启动）
 - 绿色软件目录扫描、手动添加 exe / 文件夹
 - 托盘常驻、全局热键、开机自启
 - 应用别名、分组图标与颜色、组内拖拽排序
@@ -452,12 +432,12 @@ MVP 只扫开始菜单，注册表的初步方案保留在这里，后续实现�
 - 导入导出、换机迁移
 - 安装/卸载监听，扫描改为增量事件驱动
 
-## 15. 实现状态（2026-11-21）
+## 15. 实现状态
 
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
-- 来源：开始菜单 `.lnk` 与 Store/UWP AUMID；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；行名称旁显示 `start` / `store` / `registry` 徽标
+- 来源：开始菜单 `.lnk` 与 Store/UWP AUMID；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；行名称旁显示 `start` / `store` 徽标；开始菜单扫描根为 `Start Menu` 本身，包含根级 `.lnk`
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加规则忽略项并参与搜索；默认不加载，重复项不列入
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复

@@ -1,6 +1,6 @@
 export type AppStatus = "active" | "missing";
 export type EntryType = "app" | "uninstaller" | "installer" | "system";
-export type AppSource = "start" | "store" | "registry";
+export type AppSource = "start" | "store";
 export type AppLaunchKind = "lnk" | "exe" | "aumid";
 
 export interface ScannedApp {

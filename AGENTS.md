@@ -9,13 +9,15 @@
 
 ## 明确取舍
 
+- 不做注册表扫描：本机实测 637 个卸载表项中可用启动 104 个，其中 99 个开始菜单已有；App Paths 169 项也没有超出 `start + store` 的真实应用。注册表只带来运行库、系统组件、安装器与辅助进程噪声，收益不抵成本；无快捷方式的应用由手动添加 exe 兜底。
 - 不做网格视图：整理场景列表视图更合适，不需要在列表与网格之间切换，应用统一用列表展示。
 - 不做双击启动：启动固定在行尾「启动」与行右键菜单；双击只选中，Enter / Space 切换选中。
 - 右键菜单只在行上：固定「启动 / 打开目标路径 / 打开链接路径」，路径缺失置灰；备注输入框内保留系统右键菜单。
 - 拖拽归组只从行首握把发起：整行不设 `draggable`，避免与行内按钮、文本选择冲突。
 - 分组操作收进行尾「⋯」菜单：重命名 / 删除共用原生 `<dialog>`，点击遮罩不关闭；不做行内改名、不做输入组名二次确认。
 - 分组排序：手动排序下仅行首握把可拖，插入线提示落点；名称 / 创建顺序只改变展示，不覆盖 `groups.sort`；正/倒序全局持久化，手动倒序拖拽按可见顺序反写。
-- 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store / registry`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。
+- 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。
+- 开始菜单扫描根目录是 `Start Menu` 本身，不是 `Start Menu\Programs`：根级 `.lnk`（如 SumatraPDF）必须纳入，`Programs` 子目录递归覆盖。
 - 行组件命名：通用布局用 `RowLayout`，领域行用 `AppRow` / `IgnoredShortcutRow` / `ManualIgnoredAppRow`，不再使用 `ListRow` / `AppListRow`。
 
 ## 文档分工
