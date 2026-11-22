@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -59,12 +59,40 @@ describe("scanGreenDirs", () => {
       apps: [],
       scanned: 0,
       readable: 0,
+      truncated: 0,
     });
     mkdirSync(join(dir, "empty"));
     expect(scanGreenDirs([join(dir, "empty")])).toEqual({
       apps: [],
       scanned: 0,
       readable: 1,
+      truncated: 0,
     });
+  });
+
+  it("最多扫描 3 层目录", () => {
+    exe(join(dir, "a", "b", "c", "ok.exe"));
+    exe(join(dir, "a", "b", "c", "d", "deep.exe"));
+    const result = scanGreenDirs([dir]);
+    expect(result.apps.map((app) => app.name)).toEqual(["ok"]);
+  });
+
+  it("跳过 junction / 符号链接", () => {
+    const real = join(dir, "real");
+    exe(join(real, "Inside.exe"));
+    symlinkSync(real, join(dir, "link"), "junction");
+    const result = scanGreenDirs([dir]);
+    expect(result.apps.map((app) => app.name)).toEqual(["Inside"]);
+    expect(result.scanned).toBe(1);
+  });
+
+  it("单个目录最多 1000 个 exe", () => {
+    for (let index = 0; index < 1001; index += 1) {
+      writeFileSync(join(dir, `tool-${index}.exe`), "");
+    }
+    const result = scanGreenDirs([dir]);
+    expect(result.apps).toHaveLength(1000);
+    expect(result.scanned).toBe(1000);
+    expect(result.truncated).toBe(1);
   });
 });

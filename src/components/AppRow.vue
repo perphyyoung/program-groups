@@ -104,7 +104,7 @@ function onHandleDragStart(event: DragEvent): void {
 
     <template #name>
       <span class="flex min-w-0 items-center gap-1.5">
-        <span class="truncate">{{ app.name }}</span>
+        <span class="truncate" :title="app.exePath || app.launchPath">{{ app.name }}</span>
         <SourceBadge :source="app.source" />
       </span>
     </template>

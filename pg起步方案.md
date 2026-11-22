@@ -155,7 +155,7 @@ WHERE a.status = 'active'
 
 - 开始菜单 `.lnk` 能直接启动、名称中文化好、图标好取，是主来源。
 - Store 应用走 AUMID 启动，exe 路径不参与启动。
-- 绿色软件不做名称/深度过滤：递归读取所选目录全部 `.exe`，与开始菜单同一 exe 时保留开始菜单，不想要的应用手动忽略。
+- 绿色软件不做名称过滤：递归读取所选目录最多 3 层的全部 `.exe`，跳过符号链接 / junction，单个目录最多 1000 个 exe；与开始菜单同一 exe 时保留开始菜单，不想要的应用手动忽略。
 - 注册表不做：本机实测 637 个卸载表项中可用启动 104 个，其中 99 个开始菜单已有；App Paths 169 项也没有超出 `start + store` 的真实应用。
 - 没有快捷方式的应用不会出现；后续只考虑手动添加 exe，不再做注册表扫描。
 
@@ -167,7 +167,8 @@ WHERE a.status = 'active'
 - 递归查找 `.lnk`；跳过 `Startup` 目录。根目录本身要扫，`SumatraPDF.lnk` 这类根级快捷方式不能漏。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
 - Store 扫描分三段：读取应用包、读取 Store 启动项、分类；PowerShell 逐行输出 `PGPROGRESS` / `PGRESULT`，主进程转成 `scan:progress`，卡片显示「扫描 Store 应用 1/3 · 读取应用包」。
-- 绿色软件扫描：递归读取设置页所选目录（最多 5 个）的全部 `.exe`，不按名称或深度过滤；与应用同 exe 的开始菜单项去重，保留 `start`；进度阶段 `green`，卡片显示「扫描绿色软件 N/M」。设置页选择或移除目录后只重扫 green，「刷新」仍扫全部来源。
+- 绿色软件扫描：递归读取设置页所选目录（最多 5 个，每个最多 3 层、1000 个 exe）的全部 `.exe`，跳过符号链接，不按名称过滤；与应用同 exe 的开始菜单项去重，保留 `start`；进度阶段 `green`，卡片显示「扫描绿色软件 N/M」。设置页选择目录后只重扫 green；移除目录先确认，确认后直接删除该目录下应用（分组归属与备注一并删除），刷新界面，不再扫描。
+- 选择目录拒绝盘符根；同名 exe 用名称 hover 的完整路径区分。
 - 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`；扫描结束后底部居中提示「扫描完成：新增 N，缺失 M，忽略 I，重复 D」。
 
 ### 4.3 图标
@@ -296,9 +297,9 @@ WHERE a.status = 'active'
 | `icons:settings` | — | `{ sources: IconSource[]; stats: Record<IconSource, { cached; total }> }`，默认仅 `start` |
 | `icons:setSources` | `sources` | `void`，写入 `meta.icon_sources` |
 | `icons:update` | `{ force, sources }` | `{ extracted, cached, failed, force }`，按来源增量提取；`force` 全量重建 |
-| `green:list` | — | `string[]`，绿色软件目录（最多 5 个） |
-| `green:pick` | — | 打开目录选择框，追加后返回 `string[]` |
-| `green:remove` | `dir` | 移除后返回 `string[]` |
+| `green:list` | — | `{ dir, count }[]`，绿色软件目录与各自应用数（最多 5 个） |
+| `green:pick` | — | 打开目录选择框，拒绝盘符根；返回 `{ dir, count }[]` |
+| `green:remove` | `dir` | `{ dirs: { dir, count }[]; deleted: number }`，硬删该目录下应用 |
 | `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
 | `groups:delete` | `id` | `void` |

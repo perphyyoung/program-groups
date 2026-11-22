@@ -12,15 +12,17 @@ import {
 import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { join, extname, resolve } from "node:path";
+import { join, extname, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   addMembers,
   clearIconFiles,
   closeDatabase,
+  countGreenAppsUnder,
   countIconStats,
   countMissing,
   createGroup,
+  deleteGreenAppsUnder,
   deleteGroup,
   getApp,
   getGreenDirs,
@@ -70,6 +72,8 @@ import type {
   AppRecord,
   AppSource,
   GroupEntry,
+  GreenDirEntry,
+  GreenRemoveResult,
   GroupsData,
   IconSettings,
   IconSource,
@@ -105,17 +109,25 @@ function databasePath(): string {
 
 const MAX_GREEN_DIRS = 5;
 
-/** e2e 用 PG_GREEN_DIRS 覆盖数据库里的绿色软件目录 */
-function greenRoots(): string[] {
-  const override = process.env["PG_GREEN_DIRS"];
-  if (override !== undefined) {
-    return override
+/** e2e 用 PG_GREEN_DIRS 在启动时写入 meta，运行期统一读数据库 */
+function seedGreenDirs(): void {
+  const seed = process.env["PG_GREEN_DIRS"];
+  if (seed === undefined) return;
+  setGreenDirs(
+    seed
       .split(";")
       .map((item) => item.trim())
       .filter(Boolean)
-      .slice(0, MAX_GREEN_DIRS);
-  }
+      .slice(0, MAX_GREEN_DIRS),
+  );
+}
+
+function greenRoots(): string[] {
   return getGreenDirs();
+}
+
+function greenDirEntries(): GreenDirEntry[] {
+  return greenRoots().map((dir) => ({ dir, count: countGreenAppsUnder(dir) }));
 }
 
 function iconUrl(appId: string, iconFile: string | null): string | null {
@@ -257,7 +269,7 @@ async function runScan(
       : { ok: false, apps: [], ignored: [] };
     const greenResult = sources.includes("green")
       ? scanGreenDirs(greenRoots(), onProgress)
-      : { apps: [], scanned: 0, readable: 0 };
+      : { apps: [], scanned: 0, readable: 0, truncated: 0 };
     /* 同一 exe 已由开始菜单、Store 或数据库收录时跳过，保持原来源 */
     const knownIds = new Set([
       ...startResult.candidates.map((candidate) => candidate.id),
@@ -325,6 +337,7 @@ async function runScan(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
         `storeIgnored=${storeResult.ignored.length} storeOk=${storeResult.ok} ` +
         `green=${greenApps.length} greenOk=${greenResult.readable > 0} ` +
+        `greenTruncated=${greenResult.truncated} ` +
         `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
         `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
@@ -609,7 +622,7 @@ ipcMain.handle("icons:update", (event, options: unknown) =>
   }),
 );
 
-ipcMain.handle("green:list", () => handleIpc("green:list", () => greenRoots()));
+ipcMain.handle("green:list", () => handleIpc("green:list", () => greenDirEntries()));
 
 ipcMain.handle("green:pick", (event) =>
   handleIpcAsync("green:pick", async () => {
@@ -621,24 +634,35 @@ ipcMain.handle("green:pick", (event) =>
     const result = win
       ? await dialog.showOpenDialog(win, options)
       : await dialog.showOpenDialog(options);
-    if (result.canceled || result.filePaths.length === 0) return greenRoots();
+    if (result.canceled || result.filePaths.length === 0) return greenDirEntries();
     const current = getGreenDirs();
     const picked = resolve(result.filePaths[0]!);
-    if (current.some((dir) => dir.toLowerCase() === picked.toLowerCase())) return greenRoots();
+    const root = parse(picked).root;
+    if (root && picked.replace(/[\\/]+$/u, "") === root.replace(/[\\/]+$/u, "")) {
+      throw new Error("不能选择磁盘根目录");
+    }
+    if (current.some((dir) => dir.toLowerCase() === picked.toLowerCase())) {
+      return greenDirEntries();
+    }
     if (current.length >= MAX_GREEN_DIRS) {
       throw new Error(`最多添加 ${MAX_GREEN_DIRS} 个绿色软件目录`);
     }
     setGreenDirs([...current, picked]);
-    return greenRoots();
+    return greenDirEntries();
   }),
 );
 
 ipcMain.handle("green:remove", (_event, dir: unknown) =>
-  handleIpc("green:remove", () => {
+  handleIpc("green:remove", (): GreenRemoveResult => {
     if (typeof dir !== "string") throw new Error("绿色软件目录无效");
     const lower = dir.toLowerCase();
-    setGreenDirs(getGreenDirs().filter((item) => item.toLowerCase() !== lower));
-    return greenRoots();
+    const dirs = getGreenDirs();
+    if (!dirs.some((item) => item.toLowerCase() === lower)) {
+      return { dirs: greenDirEntries(), deleted: 0 };
+    }
+    const deleted = deleteGreenAppsUnder(dir);
+    setGreenDirs(dirs.filter((item) => item.toLowerCase() !== lower));
+    return { dirs: greenDirEntries(), deleted };
   }),
 );
 
@@ -863,6 +887,7 @@ app.whenReady().then(() => {
     }
   });
   openDatabase(databasePath());
+  seedGreenDirs();
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

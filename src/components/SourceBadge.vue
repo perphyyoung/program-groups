@@ -13,8 +13,8 @@ const title = computed(() => {
 });
 
 const tone = computed(() => {
-  if (props.source === "store") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
-  if (props.source === "green") return "border-teal-500/40 bg-teal-500/10 text-teal-300";
+  if (props.source === "store") return "border-violet-500/40 bg-violet-500/10 text-violet-300";
+  if (props.source === "green") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
   return "border-slate-500/40 bg-slate-500/10 text-slate-400";
 });
 </script>

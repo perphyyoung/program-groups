@@ -104,9 +104,10 @@
 验证绿色软件目录：
 
 - 用例自建临时 green 目录（复制 `notepad.exe`），不使用本机真实目录
-- 目录内全部 `.exe` 都成为应用，行名旁显示 `green` 徽标
+- 目录内 3 层以内的 `.exe` 都成为应用，行名旁显示 `green` 徽标；名称 hover 显示完整路径
 - 辅助 exe 可通过「手动忽略」收起
 - 设置页显示目录与 `N / 5`；勾选 `green` 后「更新图标缓存」生成 `pg-icon://` 图标
+- 移除目录先确认（原生 dialog，默认聚焦取消，Esc 关闭）；取消保留，确认后该目录下应用从列表消失
 
 ## 约定
 
@@ -119,5 +120,5 @@
 - 用例标题与结果由 fixtures 自动写入 `pg.log`（`▶` / `✓ 通过` / `✗`）
 - 共用函数在 `e2e-helper.ts`（`e2eEnv` / `makeWorkdir` / `createShortcut` / `launchApp`），日志在 `e2e-logger.ts`
 - e2e 固定注入 `PG_STORE_JSON=[]`，不扫描本机真实 Store，避免环境差异；注入格式含 `Name` / `AppID` / `SignatureKind`，Store 签名进应用，其他进已忽略
-- 绿色软件目录用 `PG_GREEN_DIRS`（分号分隔）注入临时目录，不读取本机真实路径
+- 绿色软件目录用 `PG_GREEN_DIRS`（分号分隔）在启动时写入 `meta.green_dirs`，运行期统一读数据库，不读取本机真实路径
 - 用例覆盖范围变化后，同步更新本文件对应章节

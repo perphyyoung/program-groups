@@ -24,7 +24,7 @@
 - 拖拽归组只从行首握把发起：整行不设 `draggable`，避免与行内按钮、文本选择冲突。
 - 分组操作收进行尾「⋯」菜单：重命名 / 删除共用原生 `<dialog>`，点击遮罩不关闭；不做行内改名、不做输入组名二次确认。
 - 分组排序：手动排序下仅行首握把可拖，插入线提示落点；名称 / 创建顺序只改变展示，不覆盖 `groups.sort`；正/倒序全局持久化，手动倒序拖拽按可见顺序反写。
-- 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store / green`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。绿色软件由用户在设置页选择目录（最多 5 个），扫描全部 `.exe`，不做过滤，不想要的应用手动忽略。
+- 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store / green`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。绿色软件由用户在设置页选择目录（最多 5 个），扫描最多 3 层、单目录最多 1000 个 `.exe`，跳过符号链接，不做名称过滤；不想要的应用手动忽略，移除目录需确认并硬删该目录下应用。
 - 开始菜单扫描根目录是 `Start Menu` 本身，不是 `Start Menu\Programs`：根级 `.lnk`（如 SumatraPDF）必须纳入，`Programs` 子目录递归覆盖。
 - 图标提取与扫描分离：扫描只读 `<data>/icons` 已有缓存，不提取图标；提取只在设置页手动触发，默认增量，可勾选全量重建。图标来源默认只勾 `start`；`store` 取清单 Logo，`green` 直接取所选目录的 exe 图标。
 - 行组件命名：通用布局用 `RowLayout`，领域行用 `AppRow` / `IgnoredShortcutRow` / `ManualIgnoredAppRow`，不再使用 `ListRow` / `AppListRow`。

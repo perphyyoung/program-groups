@@ -1,4 +1,6 @@
 import type {
+  GreenDirEntry,
+  GreenRemoveResult,
   GroupsData,
   GroupSortDirection,
   GroupSortMode,
@@ -20,9 +22,9 @@ export interface Api {
   iconSettings(): Promise<IconSettings>;
   setIconSources(sources: IconSource[]): Promise<void>;
   updateIcons(options: IconUpdateOptions): Promise<IconUpdateResult>;
-  listGreenDirs(): Promise<string[]>;
-  pickGreenDir(): Promise<string[]>;
-  removeGreenDir(dir: string): Promise<string[]>;
+  listGreenDirs(): Promise<GreenDirEntry[]>;
+  pickGreenDir(): Promise<GreenDirEntry[]>;
+  removeGreenDir(dir: string): Promise<GreenRemoveResult>;
   createGroup(name: string): Promise<{ id: string; name: string; sort: number }>;
   renameGroup(id: string, name: string): Promise<void>;
   deleteGroup(id: string): Promise<void>;

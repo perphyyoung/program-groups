@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
 import AppRow from "./components/AppRow.vue";
+import ConfirmDialog from "./components/ConfirmDialog.vue";
 import GroupDialog from "./components/GroupDialog.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
@@ -24,6 +25,7 @@ import type {
   AppEntry,
   AppScope,
   GroupEntry,
+  GreenDirEntry,
   GroupSortDirection,
   GroupSortMode,
   IconSettings,
@@ -35,10 +37,9 @@ import type {
   ScanSummary,
 } from "./lib/types";
 
-type DialogState =
-  | { kind: "create" }
-  | { kind: "rename"; group: GroupEntry }
-  | { kind: "delete"; group: GroupEntry };
+type DialogState = { kind: "create" } | { kind: "rename"; group: GroupEntry };
+
+type ConfirmState = { kind: "green"; entry: GreenDirEntry } | { kind: "group"; group: GroupEntry };
 
 const apps = ref<AppEntry[]>([]);
 const groups = ref<GroupEntry[]>([]);
@@ -62,7 +63,31 @@ const scanError = ref<string | null>(null);
 const iconSettings = ref<IconSettings | null>(null);
 const iconUpdating = ref(false);
 const iconProgress = ref<IconUpdateProgress | null>(null);
-const greenDirs = ref<string[]>([]);
+const greenDirs = ref<GreenDirEntry[]>([]);
+const confirmState = ref<ConfirmState | null>(null);
+const confirmBusy = ref(false);
+const confirmError = ref<string | null>(null);
+const confirmTitle = computed(() => {
+  const state = confirmState.value;
+  if (!state) return "";
+  if (state.kind === "green") return "移除绿色软件目录？";
+  return `删除分组「${state.group.name}」？`;
+});
+const confirmDescription = computed(() => {
+  const state = confirmState.value;
+  if (!state) return "";
+  if (state.kind === "green") {
+    return `移除「${state.entry.dir}」？该目录下 ${state.entry.count} 个应用将被删除，分组归属与备注一并清除。`;
+  }
+  const count = state.group.count;
+  if (count > 0) {
+    return `组内 ${count} 个应用会失去这个分组；只属于它的应用会回到未分组。应用不会被卸载，其他分组不受影响。`;
+  }
+  return "这个分组还没有应用，删除后不可恢复。";
+});
+const confirmLabel = computed(() =>
+  confirmState.value?.kind === "group" ? "删除分组" : "移除目录",
+);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
@@ -466,6 +491,7 @@ async function scan(): Promise<void> {
       ignoredItems.value = summary.ignoredItems;
       duplicateItems.value = summary.duplicateItems;
       if (summary.changed) await load();
+      await loadGreenDirs();
       showToast(
         `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
         "info",
@@ -481,6 +507,7 @@ async function scanGreen(): Promise<void> {
     () => window.api.scanGreen(),
     async (summary) => {
       if (summary.changed) await load();
+      await loadGreenDirs();
       showToast(`绿色软件扫描完成：新增 ${summary.added}，缺失 ${summary.missing}`, "info");
     },
   );
@@ -515,12 +542,47 @@ async function pickGreenDir(): Promise<void> {
   }
 }
 
-async function removeGreenDir(dir: string): Promise<void> {
+function requestRemoveGreen(entry: GreenDirEntry): void {
+  confirmError.value = null;
+  confirmState.value = { kind: "green", entry };
+}
+
+function closeConfirm(): void {
+  if (confirmBusy.value) return;
+  confirmState.value = null;
+  confirmError.value = null;
+}
+
+async function confirmAction(): Promise<void> {
+  const current = confirmState.value;
+  if (!current || confirmBusy.value) return;
+  confirmBusy.value = true;
+  confirmError.value = null;
   try {
-    greenDirs.value = await window.api.removeGreenDir(dir);
-    await scanGreen();
+    if (current.kind === "green") {
+      const result = await window.api.removeGreenDir(current.entry.dir);
+      greenDirs.value = result.dirs;
+      await load();
+      await loadIconSettings();
+      showToast(`已移除绿色软件目录，删除 ${result.deleted} 个应用`, "info");
+    } else {
+      await window.api.deleteGroup(current.group.id);
+      if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
+        scope.value = { kind: "ungrouped" };
+        clearSelection();
+      }
+      await loadGroups();
+      showToast(`已删除分组「${current.group.name}」`, "info");
+    }
+    confirmState.value = null;
+    if (current.kind === "group") {
+      await nextTick();
+      sidebar.value?.focusUngrouped();
+    }
   } catch (error) {
-    showToast(`移除绿色软件目录失败：${errorMessage(error)}`, "error");
+    confirmError.value = errorMessage(error);
+  } finally {
+    confirmBusy.value = false;
   }
 }
 
@@ -671,9 +733,9 @@ function openRename(group: GroupEntry): void {
   dialog.value = { kind: "rename", group };
 }
 
-function openDelete(group: GroupEntry): void {
-  dialogError.value = null;
-  dialog.value = { kind: "delete", group };
+function requestDeleteGroup(group: GroupEntry): void {
+  confirmError.value = null;
+  confirmState.value = { kind: "group", group };
 }
 
 function closeDialog(): void {
@@ -696,7 +758,7 @@ function openGroupMenu(group: GroupEntry, request: RowContextRequest): void {
       label: "删除分组",
       disabled: false,
       danger: true,
-      run: () => openDelete(group),
+      run: () => requestDeleteGroup(group),
     },
   ];
   void nextTick(() => contextMenu.value?.openAt(request.x, request.y, request.anchor));
@@ -712,23 +774,11 @@ async function confirmDialog(name: string): Promise<void> {
       const created = await window.api.createGroup(name);
       await loadGroups();
       targetGroupId.value = created.id;
-    } else if (current.kind === "rename") {
+    } else {
       await window.api.renameGroup(current.group.id, name);
       await loadGroups();
-    } else {
-      await window.api.deleteGroup(current.group.id);
-      if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
-        scope.value = { kind: "ungrouped" };
-        clearSelection();
-      }
-      await loadGroups();
-      showToast(`已删除分组「${current.group.name}」`, "info");
     }
     dialog.value = null;
-    if (current.kind === "delete") {
-      await nextTick();
-      sidebar.value?.focusUngrouped();
-    }
   } catch (error) {
     dialogError.value = errorMessage(error);
   } finally {
@@ -839,7 +889,7 @@ onBeforeUnmount(() => {
             @update="updateIcons"
             @sources-change="setIconSources"
             @pick-green="pickGreenDir"
-            @remove-green="removeGreenDir"
+            @remove-green="requestRemoveGreen"
           />
 
           <div v-else-if="scope.kind === 'ignored'" class="h-full">
@@ -1056,13 +1106,25 @@ onBeforeUnmount(() => {
 
     <GroupDialog
       :mode="dialog?.kind ?? null"
-      :group="dialog && dialog.kind !== 'create' ? dialog.group : null"
+      :group="dialog?.kind === 'rename' ? dialog.group : null"
       :error="dialogError"
       :busy="dialogBusy"
       @confirm="confirmDialog"
       @cancel="closeDialog"
       @closed="closeDialog"
       @input="dialogError = null"
+    />
+
+    <ConfirmDialog
+      :open="confirmState !== null"
+      :title="confirmTitle"
+      :description="confirmDescription"
+      :confirm-label="confirmLabel"
+      :busy="confirmBusy"
+      busy-label="删除中…"
+      :error="confirmError"
+      @confirm="confirmAction"
+      @cancel="closeConfirm"
     />
 
     <RowContextMenu ref="contextMenu" :items="menuItems" :label="menuLabel" @close="onMenuClose" />

@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  GreenDirEntry,
+  GreenRemoveResult,
   GroupsData,
   GroupSortDirection,
   GroupSortMode,
@@ -23,9 +25,10 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("icons:setSources", sources),
   updateIcons: (options: IconUpdateOptions): Promise<IconUpdateResult> =>
     ipcRenderer.invoke("icons:update", options),
-  listGreenDirs: (): Promise<string[]> => ipcRenderer.invoke("green:list"),
-  pickGreenDir: (): Promise<string[]> => ipcRenderer.invoke("green:pick"),
-  removeGreenDir: (dir: string): Promise<string[]> => ipcRenderer.invoke("green:remove", dir),
+  listGreenDirs: (): Promise<GreenDirEntry[]> => ipcRenderer.invoke("green:list"),
+  pickGreenDir: (): Promise<GreenDirEntry[]> => ipcRenderer.invoke("green:pick"),
+  removeGreenDir: (dir: string): Promise<GreenRemoveResult> =>
+    ipcRenderer.invoke("green:remove", dir),
   createGroup: (name: string) => ipcRenderer.invoke("groups:create", name),
   renameGroup: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke("groups:rename", id, name),

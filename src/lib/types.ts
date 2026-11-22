@@ -138,6 +138,18 @@ export interface IconUpdateProgress {
   failed: number;
 }
 
+export interface GreenDirEntry {
+  dir: string;
+  /** 该目录下的绿色应用数，含 missing */
+  count: number;
+}
+
+export interface GreenRemoveResult {
+  dirs: GreenDirEntry[];
+  /** 已从数据库删除的应用数 */
+  deleted: number;
+}
+
 export interface ScanProgress {
   phase: "start-menu" | "store" | "green" | "icons" | "done";
   done: number;

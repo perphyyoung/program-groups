@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { IconSettings, IconSource, IconUpdateProgress } from "../lib/types";
+import type { GreenDirEntry, IconSettings, IconSource, IconUpdateProgress } from "../lib/types";
 
 const props = defineProps<{
   settings: IconSettings | null;
   busy: boolean;
   progress: IconUpdateProgress | null;
-  greenDirs: string[];
+  greenDirs: GreenDirEntry[];
 }>();
 
 const emit = defineEmits<{
   update: [force: boolean];
   sourcesChange: [sources: IconSource[]];
   pickGreen: [];
-  removeGreen: [dir: string];
+  removeGreen: [entry: GreenDirEntry];
 }>();
 
 const force = ref(false);
@@ -64,9 +64,28 @@ function startUpdate(): void {
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
           <h2 id="settings-green-title" class="text-sm font-semibold text-slate-100">绿色软件</h2>
-          <p class="mt-1 text-sm text-slate-400">
-            扫描所选目录下的全部 exe，不想要的应用在列表中手动忽略。
-          </p>
+          <div class="mt-1 flex items-center gap-1.5">
+            <p class="text-sm text-slate-400">
+              扫描所选目录下的全部 exe，不想要的应用在列表中手动忽略。
+            </p>
+            <span class="group relative inline-flex">
+              <button
+                type="button"
+                aria-label="绿色软件扫描规则说明"
+                aria-describedby="green-scan-tip"
+                class="flex size-4 items-center justify-center rounded-full border border-slate-600/70 text-xs leading-none text-slate-400 transition hover:border-slate-500 hover:text-slate-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400"
+              >
+                ?
+              </button>
+              <span
+                id="green-scan-tip"
+                role="tooltip"
+                class="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-white/10 bg-[#151b25] px-2 py-1 text-xs text-slate-300 shadow-xl group-hover:block group-focus-within:block"
+              >
+                最多 3 层；跳过符号链接；每个目录最多 1000 个 exe
+              </span>
+            </span>
+          </div>
         </div>
         <div class="flex shrink-0 items-center gap-3">
           <span class="text-xs tabular-nums text-slate-500">{{ greenDirs.length }} / 5</span>
@@ -82,13 +101,15 @@ function startUpdate(): void {
         </div>
       </div>
       <ul v-if="greenDirs.length > 0" class="mt-4 space-y-2 border-t border-white/10 pt-4">
-        <li v-for="dir in greenDirs" :key="dir" class="flex items-center gap-3">
-          <span class="min-w-0 flex-1 truncate text-sm text-slate-300" :title="dir">{{ dir }}</span>
+        <li v-for="entry in greenDirs" :key="entry.dir" class="flex items-center gap-3">
+          <span class="min-w-0 flex-1 truncate text-sm text-slate-300" :title="entry.dir">
+            {{ entry.dir }}
+          </span>
           <button
             type="button"
             class="shrink-0 rounded-md border border-white/10 px-2 py-0.5 text-xs text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
-            :aria-label="`移除 ${dir}`"
-            @click="emit('removeGreen', dir)"
+            :aria-label="`移除 ${entry.dir}`"
+            @click="emit('removeGreen', entry)"
           >
             移除
           </button>

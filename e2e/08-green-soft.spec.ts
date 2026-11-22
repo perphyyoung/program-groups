@@ -46,6 +46,37 @@ test("绿色软件目录：全部 exe 收录，可手动忽略并提取图标", 
       "src",
       /^pg-icon:\/\//u,
     );
+
+    /* 移除目录需要确认；取消或 Esc 保留，确认后删除该目录下的应用 */
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const removeButton = page.getByRole("button", {
+      name: `移除 ${greenDir}`,
+      exact: true,
+    });
+    const confirmDialog = page.getByRole("dialog", {
+      name: "移除绿色软件目录？",
+      exact: true,
+    });
+
+    await removeButton.click();
+    await expect(confirmDialog).toBeVisible();
+    await expect(confirmDialog.getByRole("button", { name: "取消", exact: true })).toBeFocused();
+    await confirmDialog.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(confirmDialog).toBeHidden();
+    await expect(page.getByText("1 / 5", { exact: true })).toBeVisible();
+
+    await removeButton.click();
+    await expect(confirmDialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(confirmDialog).toBeHidden();
+    await expect(page.getByText("1 / 5", { exact: true })).toBeVisible();
+
+    await removeButton.click();
+    await confirmDialog.getByRole("button", { name: "移除目录", exact: true }).click();
+    await expect(page.getByText("未选择目录", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^已移除绿色软件目录，删除 3 个应用$/u)).toBeVisible();
+    await page.getByRole("button", { name: "未分组", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Alpha", exact: true })).toHaveCount(0);
   } finally {
     await app.close().catch(() => undefined);
     rmSync(base, { recursive: true, force: true });

@@ -8,8 +8,10 @@ import {
   clearIconFiles,
   closeDatabase,
   countIconStats,
+  countGreenAppsUnder,
   countMissing,
   createGroup,
+  deleteGreenAppsUnder,
   deleteGroup,
   getGreenDirs,
   getGroupSortDirection,
@@ -100,6 +102,41 @@ describe("database", () => {
     expect(countIconStats().green).toEqual({ cached: 0, total: 1 });
     expect(setIconFiles([{ id: "g", iconFile: "icons/green_g.png" }])).toBe(1);
     expect(countIconStats().green).toEqual({ cached: 1, total: 1 });
+  });
+
+  it("移除绿色目录：只删该目录下应用、备注与归属", () => {
+    const ts = "2026-11-20T00:00:00.000Z";
+    const green = (id: string, name: string, exePath: string): DiscoveredApp => ({
+      ...app(id, name),
+      exePath,
+      launchPath: exePath,
+      launchKind: "exe",
+      source: "green",
+    });
+    reconcile(
+      [
+        green("g1", "One", "C:\\Green\\A\\One.exe"),
+        green("g2", "Two", "C:\\Green\\AB\\Two.exe"),
+        green("g3", "Three", "C:\\Green\\B\\Three.exe"),
+        { ...app("s1", "Start"), exePath: "c:\\green\\a\\start.exe" },
+      ],
+      ts,
+    );
+    setNote("app:g1", "a");
+    setNote("app:g2", "b");
+    const group = createGroup("组");
+    addMembers(["g1"], group.id);
+
+    expect(countGreenAppsUnder("C:\\Green\\A")).toBe(1);
+    expect(deleteGreenAppsUnder("C:\\Green\\A")).toBe(1);
+    expect(
+      listActiveApps()
+        .map((item) => item.id)
+        .toSorted(),
+    ).toEqual(["g2", "g3", "s1"]);
+    expect(listNotes()["app:g1"]).toBeUndefined();
+    expect(listNotes()["app:g2"]).toBe("b");
+    expect(listMemberships().filter((item) => item.appId === "g1")).toHaveLength(0);
   });
 
   it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {

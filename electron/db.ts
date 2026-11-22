@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
@@ -367,6 +367,51 @@ export function setGreenDirs(dirs: string[]): void {
       "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
     .run(GREEN_DIRS_KEY, JSON.stringify(dirs.slice(0, MAX_GREEN_DIRS)));
+}
+
+function greenDirPrefix(dir: string): string {
+  return `${resolve(dir)
+    .replace(/[\\/]+$/u, "")
+    .toLowerCase()}\\`;
+}
+
+function greenAppsUnder(dir: string): { id: string }[] {
+  const prefix = greenDirPrefix(dir);
+  const rows = requireDb()
+    .prepare("SELECT id, exe_path, launch_path FROM apps WHERE source = 'green'")
+    .all() as unknown as { id: string; exe_path: string; launch_path: string }[];
+  return rows
+    .filter(
+      (row) =>
+        row.exe_path.toLowerCase().startsWith(prefix) ||
+        row.launch_path.toLowerCase().startsWith(prefix),
+    )
+    .map((row) => ({ id: row.id }));
+}
+
+export function countGreenAppsUnder(dir: string): number {
+  return greenAppsUnder(dir).length;
+}
+
+/** 移除绿色目录时硬删其下应用；归属与手动忽略由外键级联，备注一并清理 */
+export function deleteGreenAppsUnder(dir: string): number {
+  const apps = greenAppsUnder(dir);
+  if (apps.length === 0) return 0;
+  const database = requireDb();
+  database.exec("BEGIN");
+  try {
+    const deleteNote = database.prepare("DELETE FROM notes WHERE key = ?");
+    const deleteApp = database.prepare("DELETE FROM apps WHERE id = ?");
+    for (const app of apps) {
+      deleteNote.run(`app:${app.id}`);
+      deleteApp.run(app.id);
+    }
+    database.exec("COMMIT");
+    return apps.length;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listManualIgnoredIds(): Set<string> {
