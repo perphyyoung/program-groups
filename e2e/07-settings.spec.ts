@@ -38,5 +38,5 @@ test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) 
   writeFileSync(legacy, "old");
   await page.getByRole("button", { name: "重建图标缓存", exact: true }).click();
   await expect(page.getByText(/^图标缓存已更新：新增 1，复用 0，失败 0$/u)).toBeVisible();
-  expect(existsSync(legacy)).toBe(false);
+  await expect.poll(() => existsSync(legacy)).toBe(false);
 });

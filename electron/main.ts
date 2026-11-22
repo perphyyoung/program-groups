@@ -8,7 +8,8 @@ import {
   shell,
   type WebContents,
 } from "electron";
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -319,14 +320,44 @@ async function updateIcons(
     if (options.force) {
       sendProgress({ done: 0, total: 0, detail: "清理旧图标", extracted: 0, cached: 0, failed: 0 });
       const iconsDir = join(dataRoot(), "icons");
+      // Windows 下目录删除是延迟的，立即重建同名目录会 EPERM：先把旧目录改名腾出名字
+      const staleDir = `${iconsDir}.old-${Date.now()}`;
+      let renamed = false;
       try {
-        rmSync(iconsDir, { recursive: true, force: true });
+        renameSync(iconsDir, staleDir);
+        renamed = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw new Error(
+            `清理图标缓存失败：${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        }
+      }
+      try {
         mkdirSync(iconsDir, { recursive: true });
       } catch (error) {
+        if (renamed) {
+          try {
+            renameSync(staleDir, iconsDir);
+          } catch (restoreError) {
+            log.warn(
+              `[icons] 恢复旧图标目录失败 ${staleDir}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+            );
+          }
+        }
         throw new Error(
-          `清理图标缓存失败：${error instanceof Error ? error.message : String(error)}`,
+          `重建图标目录失败：${error instanceof Error ? error.message : String(error)}`,
           { cause: error },
         );
+      }
+      if (renamed) {
+        // 后台删除旧目录，不阻塞提取
+        void rm(staleDir, { recursive: true, force: true }).catch((error: unknown) => {
+          log.warn(
+            `[icons] 删除旧图标目录失败 ${staleDir}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       }
       clearIconFiles();
     }
