@@ -44,7 +44,11 @@ export interface LaunchedApp {
  * 启动应用。args 必须是 "."：
  * 传 out/main/main.js 会让 app.getAppPath() 指向 out/main，preload 路径拼错。
  */
-export async function launchApp(appData: string, scanDir: string): Promise<LaunchedApp> {
+export async function launchApp(
+  appData: string,
+  scanDir: string,
+  greenDirs: string[] = [],
+): Promise<LaunchedApp> {
   const app = await electron.launch({
     args: ["."],
     env: e2eEnv({
@@ -52,6 +56,7 @@ export async function launchApp(appData: string, scanDir: string): Promise<Launc
       PG_DATA_DIR: appData,
       PG_SCAN_DIRS: scanDir,
       PG_STORE_JSON: "[]",
+      PG_GREEN_DIRS: greenDirs.join(";"),
     }),
   });
   const page = await app.firstWindow();

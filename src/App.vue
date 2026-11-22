@@ -32,6 +32,7 @@ import type {
   IgnoredItem,
   IgnoreReason,
   ScanProgress,
+  ScanSummary,
 } from "./lib/types";
 
 type DialogState =
@@ -61,6 +62,7 @@ const scanError = ref<string | null>(null);
 const iconSettings = ref<IconSettings | null>(null);
 const iconUpdating = ref(false);
 const iconProgress = ref<IconUpdateProgress | null>(null);
+const greenDirs = ref<string[]>([]);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
@@ -429,24 +431,22 @@ async function reorderGroups(ids: string[]): Promise<void> {
   }
 }
 
-async function scan(): Promise<void> {
+async function runScanAction(
+  phase: ScanProgress["phase"],
+  task: () => Promise<ScanSummary>,
+  onDone: (summary: ScanSummary) => Promise<void> | void,
+): Promise<void> {
   if (scanning.value) return;
   scanning.value = true;
   scanError.value = null;
-  scanProgress.value = { phase: "start-menu", done: 0, total: 0 };
+  scanProgress.value = { phase, done: 0, total: 0 };
   if (progressTimer) clearTimeout(progressTimer);
   progressTimer = setTimeout(() => {
     if (scanning.value) showScanProgress.value = true;
   }, 150);
   try {
-    const summary = await window.api.scanLibrary();
-    ignoredItems.value = summary.ignoredItems;
-    duplicateItems.value = summary.duplicateItems;
-    if (summary.changed) await load();
-    showToast(
-      `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
-      "info",
-    );
+    const summary = await task();
+    await onDone(summary);
   } catch (error) {
     scanError.value = errorMessage(error);
   } finally {
@@ -458,6 +458,34 @@ async function scan(): Promise<void> {
   }
 }
 
+async function scan(): Promise<void> {
+  await runScanAction(
+    "start-menu",
+    () => window.api.scanLibrary(),
+    async (summary) => {
+      ignoredItems.value = summary.ignoredItems;
+      duplicateItems.value = summary.duplicateItems;
+      if (summary.changed) await load();
+      showToast(
+        `扫描完成：新增 ${summary.added}，缺失 ${summary.missing}，忽略 ${summary.ignored}，重复 ${summary.duplicate}`,
+        "info",
+      );
+    },
+  );
+}
+
+/** 选择或移除绿色目录后只重扫 green，不重复扫开始菜单与 Store */
+async function scanGreen(): Promise<void> {
+  await runScanAction(
+    "green",
+    () => window.api.scanGreen(),
+    async (summary) => {
+      if (summary.changed) await load();
+      showToast(`绿色软件扫描完成：新增 ${summary.added}，缺失 ${summary.missing}`, "info");
+    },
+  );
+}
+
 function onScanProgress(progress: ScanProgress): void {
   scanProgress.value = progress;
 }
@@ -467,6 +495,32 @@ async function loadIconSettings(): Promise<void> {
     iconSettings.value = await window.api.iconSettings();
   } catch (error) {
     showToast(`读取图标缓存状态失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function loadGreenDirs(): Promise<void> {
+  try {
+    greenDirs.value = await window.api.listGreenDirs();
+  } catch (error) {
+    showToast(`读取绿色软件目录失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function pickGreenDir(): Promise<void> {
+  try {
+    greenDirs.value = await window.api.pickGreenDir();
+    await scanGreen();
+  } catch (error) {
+    showToast(`选择绿色软件目录失败：${errorMessage(error)}`, "error");
+  }
+}
+
+async function removeGreenDir(dir: string): Promise<void> {
+  try {
+    greenDirs.value = await window.api.removeGreenDir(dir);
+    await scanGreen();
+  } catch (error) {
+    showToast(`移除绿色软件目录失败：${errorMessage(error)}`, "error");
   }
 }
 
@@ -485,7 +539,7 @@ async function setIconSources(sources: IconSource[]): Promise<void> {
 async function updateIcons(force: boolean): Promise<void> {
   if (iconUpdating.value) return;
   const sources: IconSource[] = force
-    ? ["start", "store"]
+    ? ["start", "store", "green"]
     : Array.from(iconSettings.value?.sources ?? ["start"]);
   if (sources.length === 0) {
     showToast("请至少选择一个图标来源", "error");
@@ -687,6 +741,7 @@ onMounted(async () => {
   unsubscribeIcons = window.api.onIconProgress(onIconProgress);
   try {
     await load();
+    await loadGreenDirs();
   } catch (error) {
     showToast(`读取数据失败：${errorMessage(error)}`, "error");
   }
@@ -780,8 +835,11 @@ onBeforeUnmount(() => {
             :settings="iconSettings"
             :busy="iconUpdating"
             :progress="iconProgress"
+            :green-dirs="greenDirs"
             @update="updateIcons"
             @sources-change="setIconSources"
+            @pick-green="pickGreenDir"
+            @remove-green="removeGreenDir"
           />
 
           <div v-else-if="scope.kind === 'ignored'" class="h-full">

@@ -41,6 +41,7 @@ pg 的核心行为：**把本机常规安装的应用自动收进「未分组」
 做：
 
 - 扫描开始菜单，归集常规安装的可启动应用
+- 设置页选择绿色软件目录（最多 5 个），扫描全部 `.exe`
 - 首次进入即展示全量「未分组」列表
 - 侧栏「已忽略」列出被扫描规则过滤的项与原因
 - 新建 / 改名 / 删除分组；一个应用可加入多个分组
@@ -54,7 +55,7 @@ pg 的核心行为：**把本机常规安装的应用自动收进「未分组」
 不做（留后续）：
 
 - 注册表扫描（本机实测没有超出开始菜单与 Store 的真实应用，明确不做）
-- 绿色软件目录扫描、手动添加 exe
+- 手动添加单个 exe / 文件夹（绿色软件已通过设置页选择目录实现）
 - 自动分类、规则引擎、智能建议
 - 托盘常驻、全局热键、开机自启
 - 应用别名、分组图标 / 颜色、组内拖拽排序、分组嵌套
@@ -87,7 +88,7 @@ CREATE TABLE apps (
   launch_kind      TEXT NOT NULL,              -- 'lnk' | 'exe' | 'aumid'
   exe_path         TEXT NOT NULL,              -- 规范化后的真实 exe 路径，用于去重；AUMID 为空
   icon_file        TEXT,                       -- 相对数据目录的 icons/xxx.png
-  source           TEXT NOT NULL DEFAULT 'start', -- 'start' | 'store'
+  source           TEXT NOT NULL DEFAULT 'start', -- 'start' | 'store' | 'green'
   status           TEXT NOT NULL DEFAULT 'active', -- 'active' | 'missing'
   entry_type       TEXT NOT NULL DEFAULT 'app',    -- 'app' | 'uninstaller' | 'installer' | 'system'
   first_seen_at    TEXT NOT NULL,
@@ -150,9 +151,11 @@ WHERE a.status = 'active'
 | --- | --- | --- | --- |
 | 开始菜单 `.lnk`（用户 + 公共） | 主列表、启动入口、友好名称 | 常规安装且有开始菜单快捷方式的应用 | 无快捷方式的应用缺失；含卸载/帮助/网址等伪快捷方式 |
 | Store / UWP（AUMID） | 打包应用启动入口 | Store / Developer 签名的启动项 | 无 exe 启动路径；其他签名进已忽略 |
+| 绿色软件目录（用户选择） | 免安装应用的启动入口 | 所选目录下全部 `.exe` | 辅助程序、卸载器也会收录，由用户手动忽略；最多 5 个目录 |
 
 - 开始菜单 `.lnk` 能直接启动、名称中文化好、图标好取，是主来源。
 - Store 应用走 AUMID 启动，exe 路径不参与启动。
+- 绿色软件不做名称/深度过滤：递归读取所选目录全部 `.exe`，与开始菜单同一 exe 时保留开始菜单，不想要的应用手动忽略。
 - 注册表不做：本机实测 637 个卸载表项中可用启动 104 个，其中 99 个开始菜单已有；App Paths 169 项也没有超出 `start + store` 的真实应用。
 - 没有快捷方式的应用不会出现；后续只考虑手动添加 exe，不再做注册表扫描。
 
@@ -164,18 +167,19 @@ WHERE a.status = 'active'
 - 递归查找 `.lnk`；跳过 `Startup` 目录。根目录本身要扫，`SumatraPDF.lnk` 这类根级快捷方式不能漏。
 - 目标解析、前置校验、规则过滤、去重与原因判定见 [算法设计.md](./算法设计.md)，本文不重复。
 - Store 扫描分三段：读取应用包、读取 Store 启动项、分类；PowerShell 逐行输出 `PGPROGRESS` / `PGRESULT`，主进程转成 `scan:progress`，卡片显示「扫描 Store 应用 1/3 · 读取应用包」。
+- 绿色软件扫描：递归读取设置页所选目录（最多 5 个）的全部 `.exe`，不按名称或深度过滤；与应用同 exe 的开始菜单项去重，保留 `start`；进度阶段 `green`，卡片显示「扫描绿色软件 N/M」。设置页选择或移除目录后只重扫 green，「刷新」仍扫全部来源。
 - 扫描统计返回：`{ scanned, kept, ignored, ignoredItems, duplicate, added, updated, missing, changed }`；扫描结束后底部居中提示「扫描完成：新增 N，缺失 M，忽略 I，重复 D」。
 
 ### 4.3 图标
 
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
-- 扫描与提取分离：扫描只检查 `<data>/icons/<appId>.png` 是否存在，写入 `icon_file`；不 stat 源文件、不提取、不写 `.miss`。
-- 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标，失败保留旧图标；勾选「全量重建」时忽略来源勾选，固定处理 start + store，旧 `<data>/icons` 先改名腾出目录、后台删除并清空数据库图标引用，再重新提取，失败写 `.miss`，不保留旧图标。
-- 设置页「图标来源」控制提取范围：`start` / `store` / `green`；默认只勾 `start`，选择写入 `meta.icon_sources`。`green` 暂无扫描实现，置灰。
+- 扫描与提取分离：扫描只检查 `<data>/icons/<source>_<id>.png` 是否存在，写入 `icon_file`；不 stat 源文件、不提取、不写 `.miss`。
+- 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标，失败保留旧图标；勾选「全量重建」时忽略来源勾选，固定处理 start + store + green，旧 `<data>/icons` 先改名腾出目录、后台删除并清空数据库图标引用，再重新提取，失败写 `.miss`，不保留旧图标。
+- 设置页「图标来源」控制提取范围：`start` / `store` / `green`；默认只勾 `start`，选择写入 `meta.icon_sources`。`green` 取所选目录里的 exe。
 - Store 图标不解析 AUMID：读 `Get-AppxPackageManifest` 的 `Square44x44Logo`，目录用 `[IO.Path]::GetDirectoryName`；按限定词 token 解析，不依赖顺序，排除 `contrast-*`。优先级：targetsize 48/44/32/256，同尺寸优先 `altform-unplated`；无 targetsize 用 scale-200；基名最后；再回退同目录 `AppList.*`。
-- 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/start_<id>.png` 或 `store_<hash>.png`。
-- 图标通过 `pg-icon://icon/<encodeURIComponent(appId)>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
-- 缓存文件名去掉 Windows 非法字符并带来源前缀：start 存为 `icons/start_<id>.png`，Store `store:<hash>` 存为 `icons/store_<hash>.png`，不能直接当文件名（NTFS 会变成 ADS）。
+- 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/start_<id>.png`、`store_<hash>.png` 或 `green_<id>.png`。
+- 图标通过 `pg-icon://icon/<encodeURIComponent(appId)>?v=<mtime>` 自定义协议加载，协议按数据库 `icon_file` 找文件；响应带长缓存，图标文件变化时 URL 版本变化。
+- 缓存文件名去掉 Windows 非法字符并带来源前缀：start 存为 `icons/start_<id>.png`，Store `store:<hash>` 存为 `icons/store_<hash>.png`，green 存为 `icons/green_<id>.png`，不能直接当文件名（NTFS 会变成 ADS）。
 - 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
 - 提取失败写同名 `.miss`，源文件不变时不重试；成功后正常写 PNG。
 - 并发 8；设置页显示「已处理 N/M · 新增 X · 复用 Y · 失败 Z」。
@@ -288,9 +292,13 @@ WHERE a.status = 'active'
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary`（只读图标缓存，不返回图标状态） |
+| `library:scanGreen` | — | `ScanSummary`，只扫绿色软件目录，不动 start / store |
 | `icons:settings` | — | `{ sources: IconSource[]; stats: Record<IconSource, { cached; total }> }`，默认仅 `start` |
 | `icons:setSources` | `sources` | `void`，写入 `meta.icon_sources` |
 | `icons:update` | `{ force, sources }` | `{ extracted, cached, failed, force }`，按来源增量提取；`force` 全量重建 |
+| `green:list` | — | `string[]`，绿色软件目录（最多 5 个） |
+| `green:pick` | — | 打开目录选择框，追加后返回 `string[]` |
+| `green:remove` | `dir` | 移除后返回 `string[]` |
 | `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
 | `groups:delete` | `id` | `void` |
@@ -434,7 +442,7 @@ WHERE a.status = 'active'
 
 ## 14. 后续细化
 
-- 绿色软件目录扫描、手动添加 exe / 文件夹
+- 手动添加单个 exe / 文件夹（绿色软件目录已支持）
 - 托盘常驻、全局热键、开机自启
 - 应用别名、分组图标与颜色、组内拖拽排序
 - 自动建议分组（基于名称关键词 / 使用频率），但必须保持用户可改
@@ -447,7 +455,7 @@ WHERE a.status = 'active'
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标缓存读取与手动提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
-- 来源：开始菜单 `.lnk` 与 Store/UWP AUMID；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；行名称旁显示 `start` / `store` 徽标；开始菜单扫描根为 `Start Menu` 本身，包含根级 `.lnk`
+- 来源：开始菜单 `.lnk`、Store/UWP AUMID 与绿色软件目录；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；绿色软件由设置页选择目录（最多 5 个），扫描全部 `.exe`，辅助程序由用户手动忽略；行名称旁显示 `start` / `store` / `green` 徽标；开始菜单扫描根为 `Start Menu` 本身，包含根级 `.lnk`
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加规则忽略项并参与搜索；默认不加载，重复项不列入
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复

@@ -11,7 +11,7 @@ import {
   type ShortcutCandidate,
 } from "../src/lib/scan-rules";
 import { iconFileForId, iconMissFileForId } from "../src/lib/icon-files";
-import type { IgnoredItem, ScanProgress } from "../src/lib/types";
+import type { AppSource, IgnoredItem, ScanProgress } from "../src/lib/types";
 import { log } from "./logger";
 
 export interface StartMenuScanResult {
@@ -221,16 +221,32 @@ export interface StoreIconCandidate {
   sourcePath: string;
 }
 
-export type IconCandidate = ShortcutCandidate | StoreIconCandidate;
+/** 绿色软件候选：直接指向 exe，不做 AUMID 或快捷方式解析 */
+export interface GreenIconCandidate {
+  kind: "green";
+  id: string;
+  name: string;
+  exePath: string;
+}
+
+export type IconCandidate = ShortcutCandidate | StoreIconCandidate | GreenIconCandidate;
+
+function isStoreCandidate(candidate: IconCandidate): candidate is StoreIconCandidate {
+  return "kind" in candidate && candidate.kind === "store";
+}
+
+function isGreenCandidate(candidate: IconCandidate): candidate is GreenIconCandidate {
+  return "kind" in candidate && candidate.kind === "green";
+}
 
 /** 扫描只读缓存：不 stat 源文件、不提取、不写 miss */
 export function resolveCachedIcons(
-  candidates: { id: string }[],
+  candidates: { id: string; source: AppSource }[],
   dataDir: string,
 ): CachedIconResult {
   const icons = new Map<string, string>();
   for (const candidate of candidates) {
-    const iconFile = iconFileForId(candidate.id);
+    const iconFile = iconFileForId(candidate.id, candidate.source);
     if (existsSync(join(dataDir, iconFile))) {
       icons.set(candidate.id, iconFile);
     }
@@ -261,14 +277,16 @@ export async function extractIcons(
       next += 1;
       if (index >= candidates.length) return;
       const candidate = candidates[index]!;
-      const iconFile = iconFileForId(candidate.id);
+      const candidateSource: AppSource = "kind" in candidate ? candidate.kind : "start";
+      const iconFile = iconFileForId(candidate.id, candidateSource);
       const iconPath = join(dataDir, iconFile);
-      const missPath = join(dataDir, iconMissFileForId(candidate.id));
+      const missPath = join(dataDir, iconMissFileForId(candidate.id, candidateSource));
       try {
-        const isStore = "sourcePath" in candidate;
         let sourceMtime: number;
-        if (isStore) {
+        if (isStoreCandidate(candidate)) {
           sourceMtime = statSync(candidate.sourcePath).mtimeMs;
+        } else if (isGreenCandidate(candidate)) {
+          sourceMtime = statSync(candidate.exePath).mtimeMs;
         } else {
           sourceMtime = Math.max(
             statSync(candidate.targetPath).mtimeMs,
@@ -299,8 +317,11 @@ export async function extractIcons(
             if (existsSync(iconPath)) icons.set(candidate.id, iconFile);
           } else {
             let image: NativeImage;
-            if (isStore) {
+            if (isStoreCandidate(candidate)) {
               image = nativeImage.createFromPath(candidate.sourcePath);
+            } else if (isGreenCandidate(candidate)) {
+              // eslint-disable-next-line no-await-in-loop -- worker 内串行取图标
+              image = await app.getFileIcon(candidate.exePath, { size: "large" });
             } else {
               // eslint-disable-next-line no-await-in-loop -- worker 内串行取图标
               image = await loadIconImage(candidate);
@@ -319,8 +340,13 @@ export async function extractIcons(
         }
       } catch (error) {
         failed += 1;
+        const failedPath = isStoreCandidate(candidate)
+          ? candidate.sourcePath
+          : isGreenCandidate(candidate)
+            ? candidate.exePath
+            : candidate.launchPath;
         log.warn(
-          `[scan] 图标提取失败 ${"sourcePath" in candidate ? candidate.sourcePath : candidate.launchPath}: ${error instanceof Error ? error.message : String(error)}`,
+          `[scan] 图标提取失败 ${failedPath}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       done += 1;

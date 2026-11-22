@@ -16,9 +16,13 @@ export interface Api {
   loadLibrary(): Promise<LibraryData>;
   loadGroups(): Promise<GroupsData>;
   scanLibrary(): Promise<ScanSummary>;
+  scanGreen(): Promise<ScanSummary>;
   iconSettings(): Promise<IconSettings>;
   setIconSources(sources: IconSource[]): Promise<void>;
   updateIcons(options: IconUpdateOptions): Promise<IconUpdateResult>;
+  listGreenDirs(): Promise<string[]>;
+  pickGreenDir(): Promise<string[]>;
+  removeGreenDir(dir: string): Promise<string[]>;
   createGroup(name: string): Promise<{ id: string; name: string; sort: number }>;
   renameGroup(id: string, name: string): Promise<void>;
   deleteGroup(id: string): Promise<void>;

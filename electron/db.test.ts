@@ -11,6 +11,7 @@ import {
   countMissing,
   createGroup,
   deleteGroup,
+  getGreenDirs,
   getGroupSortDirection,
   getGroupSortMode,
   listActiveApps,
@@ -28,6 +29,7 @@ import {
   setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
+  setGreenDirs,
   setIconFiles,
   setNote,
   type DiscoveredApp,
@@ -82,6 +84,22 @@ describe("database", () => {
     clearIconFiles();
     expect(countIconStats().start).toEqual({ cached: 0, total: 2 });
     expect(listActiveApps().find((item) => item.id === "a")?.iconFile).toBeNull();
+  });
+
+  it("绿色软件目录：最多保存 5 个，JSON 往返", () => {
+    expect(getGreenDirs()).toEqual([]);
+    const dirs = ["C:\\a;b", "C:\\c", "C:\\d", "C:\\e", "C:\\f", "C:\\g"];
+    setGreenDirs(dirs);
+    expect(getGreenDirs()).toEqual(dirs.slice(0, 5));
+    setGreenDirs([]);
+    expect(getGreenDirs()).toEqual([]);
+  });
+
+  it("green 来源计入图标统计", () => {
+    reconcile([{ ...app("g", "绿色工具"), source: "green" }], "2026-11-20T00:00:00.000Z");
+    expect(countIconStats().green).toEqual({ cached: 0, total: 1 });
+    expect(setIconFiles([{ id: "g", iconFile: "icons/green_g.png" }])).toBe(1);
+    expect(countIconStats().green).toEqual({ cached: 1, total: 1 });
   });
 
   it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {

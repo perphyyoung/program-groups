@@ -295,7 +295,7 @@ export function clearIconFiles(): void {
   requireDb().prepare("UPDATE apps SET icon_file = NULL WHERE icon_file IS NOT NULL").run();
 }
 
-/** 可提取图标的活跃应用按来源统计；green 暂无数据 */
+/** 可提取图标的活跃应用按来源统计 */
 export function countIconStats(): IconCacheStats {
   const rows = requireDb()
     .prepare(
@@ -308,7 +308,7 @@ export function countIconStats(): IconCacheStats {
     green: { cached: 0, total: 0 },
   };
   for (const row of rows) {
-    if (row.source === "start" || row.source === "store") {
+    if (row.source === "start" || row.source === "store" || row.source === "green") {
       stats[row.source] = { cached: Number(row.cached), total: Number(row.total) };
     }
   }
@@ -339,6 +339,34 @@ export function setIconSources(sources: IconSource[]): void {
       "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
     .run(ICON_SOURCES_KEY, sources.join(","));
+}
+
+const GREEN_DIRS_KEY = "green_dirs";
+const MAX_GREEN_DIRS = 5;
+
+/** 绿色软件目录，最多 5 个；存储为 JSON 以容忍路径里的分号 */
+export function getGreenDirs(): string[] {
+  const row = requireDb().prepare("SELECT value FROM meta WHERE key = ?").get(GREEN_DIRS_KEY) as
+    | { value: string }
+    | undefined;
+  if (!row) return [];
+  try {
+    const parsed: unknown = JSON.parse(row.value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .slice(0, MAX_GREEN_DIRS);
+  } catch {
+    return [];
+  }
+}
+
+export function setGreenDirs(dirs: string[]): void {
+  requireDb()
+    .prepare(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(GREEN_DIRS_KEY, JSON.stringify(dirs.slice(0, MAX_GREEN_DIRS)));
 }
 
 export function listManualIgnoredIds(): Set<string> {

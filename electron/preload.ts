@@ -17,11 +17,15 @@ contextBridge.exposeInMainWorld("api", {
   loadLibrary: (): Promise<LibraryData> => ipcRenderer.invoke("library:load"),
   loadGroups: (): Promise<GroupsData> => ipcRenderer.invoke("library:groups"),
   scanLibrary: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scan"),
+  scanGreen: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scanGreen"),
   iconSettings: (): Promise<IconSettings> => ipcRenderer.invoke("icons:settings"),
   setIconSources: (sources: IconSource[]): Promise<void> =>
     ipcRenderer.invoke("icons:setSources", sources),
   updateIcons: (options: IconUpdateOptions): Promise<IconUpdateResult> =>
     ipcRenderer.invoke("icons:update", options),
+  listGreenDirs: (): Promise<string[]> => ipcRenderer.invoke("green:list"),
+  pickGreenDir: (): Promise<string[]> => ipcRenderer.invoke("green:pick"),
+  removeGreenDir: (dir: string): Promise<string[]> => ipcRenderer.invoke("green:remove", dir),
   createGroup: (name: string) => ipcRenderer.invoke("groups:create", name),
   renameGroup: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke("groups:rename", id, name),

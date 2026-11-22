@@ -14,4 +14,11 @@ describe("iconFileForId", () => {
   it("其它非法文件名字符也替换", () => {
     expect(iconFileForId('a<b>c:d"e/f\\g|h?i*j')).toBe("icons/start_a_b_c_d_e_f_g_h_i_j.png");
   });
+
+  it("green 来源使用 green 前缀", () => {
+    expect(iconFileForId("1d6646935faee063", "green")).toBe("icons/green_1d6646935faee063.png");
+    expect(iconMissFileForId("1d6646935faee063", "green")).toBe(
+      "icons/green_1d6646935faee063.miss",
+    );
+  });
 });

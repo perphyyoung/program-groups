@@ -1,7 +1,7 @@
 export type AppStatus = "active" | "missing";
 export type EntryType = "app" | "uninstaller" | "installer" | "system";
-export type AppSource = "start" | "store";
-export type IconSource = AppSource | "green";
+export type AppSource = "start" | "store" | "green";
+export type IconSource = AppSource;
 export type AppLaunchKind = "lnk" | "exe" | "aumid";
 
 export interface ScannedApp {
@@ -139,7 +139,7 @@ export interface IconUpdateProgress {
 }
 
 export interface ScanProgress {
-  phase: "start-menu" | "store" | "icons" | "done";
+  phase: "start-menu" | "store" | "green" | "icons" | "done";
   done: number;
   total: number;
   detail?: string;

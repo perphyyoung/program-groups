@@ -6,11 +6,14 @@ const props = defineProps<{
   settings: IconSettings | null;
   busy: boolean;
   progress: IconUpdateProgress | null;
+  greenDirs: string[];
 }>();
 
 const emit = defineEmits<{
   update: [force: boolean];
   sourcesChange: [sources: IconSource[]];
+  pickGreen: [];
+  removeGreen: [dir: string];
 }>();
 
 const force = ref(false);
@@ -56,6 +59,45 @@ function startUpdate(): void {
 </script>
 
 <template>
+  <section class="w-full pt-5" aria-labelledby="settings-green-title">
+    <div class="w-full rounded-xl border border-white/10 bg-[#0f131a] px-6 py-5">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h2 id="settings-green-title" class="text-sm font-semibold text-slate-100">绿色软件</h2>
+          <p class="mt-1 text-sm text-slate-400">
+            扫描所选目录下的全部 exe，不想要的应用在列表中手动忽略。
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-3">
+          <span class="text-xs tabular-nums text-slate-500">{{ greenDirs.length }} / 5</span>
+          <button
+            type="button"
+            class="h-9 min-w-[96px] rounded-lg border border-slate-600/70 bg-white/5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="greenDirs.length >= 5"
+            :title="greenDirs.length >= 5 ? '最多添加 5 个绿色软件目录' : undefined"
+            @click="emit('pickGreen')"
+          >
+            选择目录
+          </button>
+        </div>
+      </div>
+      <ul v-if="greenDirs.length > 0" class="mt-4 space-y-2 border-t border-white/10 pt-4">
+        <li v-for="dir in greenDirs" :key="dir" class="flex items-center gap-3">
+          <span class="min-w-0 flex-1 truncate text-sm text-slate-300" :title="dir">{{ dir }}</span>
+          <button
+            type="button"
+            class="shrink-0 rounded-md border border-white/10 px-2 py-0.5 text-xs text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+            :aria-label="`移除 ${dir}`"
+            @click="emit('removeGreen', dir)"
+          >
+            移除
+          </button>
+        </li>
+      </ul>
+      <p v-else class="mt-4 border-t border-white/10 pt-4 text-sm text-slate-500">未选择目录</p>
+    </div>
+  </section>
+
   <section class="w-full pt-5" aria-labelledby="settings-icon-title">
     <div class="w-full rounded-xl border border-white/10 bg-[#0f131a] px-6 py-5">
       <div class="flex flex-wrap items-start justify-between gap-4">
@@ -103,11 +145,15 @@ function startUpdate(): void {
           />
           store
         </label>
-        <label
-          class="flex w-fit cursor-not-allowed items-center gap-2 text-sm text-slate-500"
-          title="绿色软件扫描未实现"
-        >
-          <input type="checkbox" class="size-4" disabled />
+        <label class="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            class="size-4 accent-indigo-500"
+            :checked="selected.has('green')"
+            :disabled="busy || force"
+            :title="force ? '全量重建固定处理全部来源' : undefined"
+            @change="toggleSource('green', $event)"
+          />
           green
         </label>
       </div>

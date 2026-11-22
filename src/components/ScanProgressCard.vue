@@ -8,7 +8,12 @@ const props = defineProps<{
 
 const label = computed(() => {
   const progress = props.progress;
-  if (!progress || progress.total <= 0) return "准备扫描…";
+  if (!progress) return "准备扫描…";
+  if (progress.phase === "green") {
+    if (progress.total <= 0) return `扫描绿色软件 · ${progress.detail ?? "读取目录"}`;
+    return `扫描绿色软件 ${progress.done}/${progress.total}`;
+  }
+  if (progress.total <= 0) return "准备扫描…";
   if (progress.phase === "start-menu") {
     return `扫描开始菜单 ${progress.done}/${progress.total}`;
   }

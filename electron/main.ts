@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   net,
@@ -22,6 +23,7 @@ import {
   createGroup,
   deleteGroup,
   getApp,
+  getGreenDirs,
   getGroupSortDirection,
   getGroupSortMode,
   getIconSources,
@@ -43,6 +45,7 @@ import {
   setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
+  setGreenDirs,
   setIconFiles,
   setIconSources,
   setNote,
@@ -53,12 +56,14 @@ import {
   resolveCachedIcons,
   scanStartMenu,
   startMenuRoots,
+  type GreenIconCandidate,
   type IconCandidate,
+  type StartMenuScanResult,
   type StoreIconCandidate,
 } from "./scan";
-import { scanStoreApps } from "./store-scan";
+import { scanStoreApps, type StoreScanResult } from "./store-scan";
+import { scanGreenDirs } from "../src/lib/green-rules";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
-import { iconFileForId } from "../src/lib/icon-files";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
@@ -96,6 +101,21 @@ function dataRoot(): string {
 
 function databasePath(): string {
   return join(dataRoot(), "pg.db");
+}
+
+const MAX_GREEN_DIRS = 5;
+
+/** e2e 用 PG_GREEN_DIRS 覆盖数据库里的绿色软件目录 */
+function greenRoots(): string[] {
+  const override = process.env["PG_GREEN_DIRS"];
+  if (override !== undefined) {
+    return override
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, MAX_GREEN_DIRS);
+  }
+  return getGreenDirs();
 }
 
 function iconUrl(appId: string, iconFile: string | null): string | null {
@@ -208,9 +228,13 @@ function launchAumid(aumid: string): Promise<void> {
 
 let iconUpdating = false;
 
-async function runScan(sender: WebContents): Promise<ScanSummary> {
+async function runScan(
+  sender: WebContents,
+  options: { sources?: AppSource[] } = {},
+): Promise<ScanSummary> {
   if (scanning) throw new Error("扫描正在进行");
   if (iconUpdating) throw new Error("图标更新正在进行");
+  const sources = options.sources ?? ["start", "store", "green"];
   scanning = true;
   try {
     const scanStartedAt = new Date().toISOString();
@@ -218,10 +242,40 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       sender.send("scan:progress", progress);
     };
 
-    const startResult = scanStartMenu(onProgress);
-    const storeResult = await scanStoreApps(onProgress);
+    const startResult: StartMenuScanResult = sources.includes("start")
+      ? scanStartMenu(onProgress)
+      : {
+          candidates: [],
+          scanned: 0,
+          ignored: 0,
+          ignoredItems: [],
+          duplicate: 0,
+          duplicateItems: [],
+        };
+    const storeResult: StoreScanResult = sources.includes("store")
+      ? await scanStoreApps(onProgress)
+      : { ok: false, apps: [], ignored: [] };
+    const greenResult = sources.includes("green")
+      ? scanGreenDirs(greenRoots(), onProgress)
+      : { apps: [], scanned: 0, readable: 0 };
+    /* 同一 exe 已由开始菜单、Store 或数据库收录时跳过，保持原来源 */
+    const knownIds = new Set([
+      ...startResult.candidates.map((candidate) => candidate.id),
+      ...storeResult.apps.map((item) => item.id),
+      ...listActiveApps()
+        .filter((item) => item.source !== "green")
+        .map((item) => item.id),
+    ]);
+    const greenApps = greenResult.apps.filter((item) => !knownIds.has(item.id));
     const iconResult = resolveCachedIcons(
-      [...startResult.candidates, ...storeResult.apps],
+      [
+        ...startResult.candidates.map((candidate) => ({
+          id: candidate.id,
+          source: "start" as const,
+        })),
+        ...storeResult.apps,
+        ...greenApps,
+      ],
       dataRoot(),
     );
     const discovered: ScannedApp[] = [
@@ -238,16 +292,26 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
         ...storeApp,
         iconFile: iconResult.icons.get(storeApp.id) ?? null,
       })),
+      ...greenApps.map((greenApp) => ({
+        ...greenApp,
+        iconFile: iconResult.icons.get(greenApp.id) ?? null,
+      })),
     ];
-    const scannedSources = new Set<AppSource>(["start"]);
+    const scannedSources = new Set<AppSource>();
+    if (sources.includes("start")) scannedSources.add("start");
     if (storeResult.ok) scannedSources.add("store");
+    if (greenResult.readable > 0) scannedSources.add("green");
     const reconciled = reconcile(discovered, scanStartedAt, scannedSources);
     const discoveredIds = new Set(discovered.map((item) => item.id));
     const entryTypeChanges = setEntryTypes(
       entryTypesForIgnored(startResult.ignoredItems, discoveredIds),
     );
     const summary: ScanSummary = {
-      scanned: startResult.scanned + storeResult.apps.length + storeResult.ignored.length,
+      scanned:
+        startResult.scanned +
+        storeResult.apps.length +
+        storeResult.ignored.length +
+        greenResult.scanned,
       kept: discovered.length,
       ignored: startResult.ignored + storeResult.ignored.length,
       ignoredItems: [...startResult.ignoredItems, ...storeResult.ignored],
@@ -260,6 +324,7 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
         `storeIgnored=${storeResult.ignored.length} storeOk=${storeResult.ok} ` +
+        `green=${greenApps.length} greenOk=${greenResult.readable > 0} ` +
         `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
         `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
@@ -277,7 +342,7 @@ async function updateIcons(
   if (scanning) throw new Error("扫描正在进行");
   if (iconUpdating) throw new Error("图标更新正在进行");
   // 全量重建 = 所有已实现的来源，忽略渲染进程传入的选择
-  const sources: IconSource[] = options.force ? ["start", "store"] : options.sources;
+  const sources: IconSource[] = options.force ? ["start", "store", "green"] : options.sources;
   if (sources.length === 0) throw new Error("未选择图标来源");
   iconUpdating = true;
   try {
@@ -312,7 +377,15 @@ async function updateIcons(
         }
       }
     }
-    const candidates: IconCandidate[] = [...startCandidates, ...storeTasks];
+    const greenTasks: GreenIconCandidate[] = sources.includes("green")
+      ? scanGreenDirs(greenRoots()).apps.map((greenApp) => ({
+          kind: "green",
+          id: greenApp.id,
+          name: greenApp.name,
+          exePath: greenApp.exePath,
+        }))
+      : [];
+    const candidates: IconCandidate[] = [...startCandidates, ...storeTasks, ...greenTasks];
     if (options.force) {
       sendProgress({ done: 0, total: 0, detail: "清理旧图标", extracted: 0, cached: 0, failed: 0 });
       const iconsDir = join(dataRoot(), "icons");
@@ -501,6 +574,10 @@ ipcMain.handle("library:scan", (event) =>
   handleIpcAsync("library:scan", () => runScan(event.sender)),
 );
 
+ipcMain.handle("library:scanGreen", (event) =>
+  handleIpcAsync("library:scanGreen", () => runScan(event.sender, { sources: ["green"] })),
+);
+
 ipcMain.handle("icons:settings", () =>
   handleIpc("icons:settings", (): IconSettings => ({
     sources: getIconSources(),
@@ -529,6 +606,39 @@ ipcMain.handle("icons:update", (event, options: unknown) =>
       throw new Error("图标来源无效");
     }
     return updateIcons(event.sender, { force: input.force === true, sources });
+  }),
+);
+
+ipcMain.handle("green:list", () => handleIpc("green:list", () => greenRoots()));
+
+ipcMain.handle("green:pick", (event) =>
+  handleIpcAsync("green:pick", async () => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: "选择绿色软件目录",
+      properties: ["openDirectory" as const],
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return greenRoots();
+    const current = getGreenDirs();
+    const picked = resolve(result.filePaths[0]!);
+    if (current.some((dir) => dir.toLowerCase() === picked.toLowerCase())) return greenRoots();
+    if (current.length >= MAX_GREEN_DIRS) {
+      throw new Error(`最多添加 ${MAX_GREEN_DIRS} 个绿色软件目录`);
+    }
+    setGreenDirs([...current, picked]);
+    return greenRoots();
+  }),
+);
+
+ipcMain.handle("green:remove", (_event, dir: unknown) =>
+  handleIpc("green:remove", () => {
+    if (typeof dir !== "string") throw new Error("绿色软件目录无效");
+    const lower = dir.toLowerCase();
+    setGreenDirs(getGreenDirs().filter((item) => item.toLowerCase() !== lower));
+    return greenRoots();
   }),
 );
 
@@ -733,7 +843,9 @@ app.whenReady().then(() => {
   protocol.handle("pg-icon", async (request) => {
     const id = decodeURIComponent(new URL(request.url).pathname.replace(/^\//u, ""));
     if (!id || id.includes("/")) return new Response("Not found", { status: 404 });
-    const filePath = join(dataRoot(), iconFileForId(id));
+    const record = getApp(id);
+    if (!record?.iconFile) return new Response("Not found", { status: 404 });
+    const filePath = join(dataRoot(), record.iconFile);
     if (!existsSync(filePath)) return new Response("Not found", { status: 404 });
     try {
       const response = await net.fetch(pathToFileURL(filePath).toString());
