@@ -37,25 +37,30 @@ describe("store apps", () => {
     ).toEqual([]);
   });
 
-  it("只把 Store 签名归入应用，其他归入已忽略", () => {
+  it("Store 与 Developer 归入应用，其他归入已忽略", () => {
     const result = classifyStoreApps([
       { name: "计算器", aumid, signatureKind: "Store" },
-      { name: "系统应用", aumid: "SystemApp_8wekyb3d8bbwe!App", signatureKind: "System" },
       { name: "开发应用", aumid: "DevApp_8wekyb3d8bbwe!App", signatureKind: "Developer" },
+      { name: "系统应用", aumid: "SystemApp_8wekyb3d8bbwe!App", signatureKind: "System" },
+      { name: "企业应用", aumid: "EntApp_8wekyb3d8bbwe!App", signatureKind: "Enterprise" },
+      { name: "无签名应用", aumid: "NoneApp_8wekyb3d8bbwe!App", signatureKind: "None" },
     ]);
 
-    expect(result.apps).toEqual([
-      {
-        id: appIdForAumid(aumid),
-        name: "计算器",
-        launchPath: aumid,
-        launchKind: "aumid",
-        exePath: "",
-        source: "store",
-        iconFile: null,
-      },
+    expect(result.apps.map((app) => app.name)).toEqual(["计算器", "开发应用"]);
+    expect(result.apps[0]).toEqual({
+      id: appIdForAumid(aumid),
+      name: "计算器",
+      launchPath: aumid,
+      launchKind: "aumid",
+      exePath: "",
+      source: "store",
+      iconFile: null,
+    });
+    expect(result.ignored.map((item) => item.reason)).toEqual([
+      "store-auto-ignore",
+      "store-auto-ignore",
+      "store-auto-ignore",
     ]);
-    expect(result.ignored.map((item) => item.reason)).toEqual(["store-other", "store-other"]);
     expect(result.ignored[0]).toMatchObject({
       source: "store",
       launchKind: "aumid",

@@ -32,7 +32,7 @@ export function parseStoreApps(raw: unknown): StoreAppRecord[] {
   return Array.from(byAumid.values());
 }
 
-/** 只有 Store 签名进入应用；其他打包应用统一进已忽略 */
+/** 只有 Store / Developer 签名进入应用；其他打包应用统一进已忽略 */
 export function classifyStoreApps(records: StoreAppRecord[]): {
   apps: ScannedApp[];
   ignored: IgnoredItem[];
@@ -40,7 +40,7 @@ export function classifyStoreApps(records: StoreAppRecord[]): {
   const apps: ScannedApp[] = [];
   const ignored: IgnoredItem[] = [];
   for (const record of records) {
-    if (record.signatureKind === "Store") {
+    if (record.signatureKind === "Store" || record.signatureKind === "Developer") {
       apps.push({
         id: appIdForAumid(record.aumid),
         name: record.name,
@@ -54,7 +54,7 @@ export function classifyStoreApps(records: StoreAppRecord[]): {
       ignored.push({
         name: record.name,
         target: record.aumid,
-        reason: "store-other",
+        reason: "store-auto-ignore",
         source: "store",
         launchKind: "aumid",
         launchPath: record.aumid,

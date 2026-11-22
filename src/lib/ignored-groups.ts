@@ -6,7 +6,7 @@ export const IGNORE_REASON_LABELS: Record<IgnoreReason, string> = {
   website: "官网/更新",
   system: "系统工具",
   installer: "安装程序",
-  "store-other": "非 Store 打包应用",
+  "store-auto-ignore": "Store 自动忽略应用",
   unreadable: "快捷方式无法解析",
   "invalid-target": "目标不是可执行文件",
   "missing-target": "目标文件不存在",

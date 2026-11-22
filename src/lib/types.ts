@@ -68,7 +68,7 @@ export type IgnoreReason =
   | "website"
   | "system"
   | "installer"
-  | "store-other"
+  | "store-auto-ignore"
   | "unreadable"
   | "invalid-target"
   | "missing-target"

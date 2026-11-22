@@ -57,13 +57,13 @@ describe("groupIgnoredItems", () => {
     ]);
   });
 
-  it("非 Store 打包应用单独分组", () => {
+  it("Store 自动忽略应用单独分组", () => {
     const groups = groupIgnoredItems(
-      [item("系统应用", "store-other"), item("卸载工具", "uninstall")],
+      [item("系统应用", "store-auto-ignore"), item("卸载工具", "uninstall")],
       "",
     );
-    expect(groups.map((group) => group.reason)).toEqual(["uninstall", "store-other"]);
-    expect(groups[1]?.label).toBe("非 Store 打包应用");
+    expect(groups.map((group) => group.reason)).toEqual(["uninstall", "store-auto-ignore"]);
+    expect(groups[1]?.label).toBe("Store 自动忽略应用");
   });
 
   it("每个原因都有中文标签", () => {
