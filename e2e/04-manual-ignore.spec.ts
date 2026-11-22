@@ -25,19 +25,27 @@ test("手动忽略持久化，拖入分组后自动恢复", async ({ slot }) => 
   await includeIgnored.uncheck();
 
   await ignoredNav.click();
-  await expect(page.getByRole("button", { name: "手动忽略", exact: true })).toBeVisible();
+  const manualGroup = page.getByRole("button", { name: "手动忽略", exact: true });
+  await expect(manualGroup).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "取消忽略「测试应用」", exact: true }),
+  ).toBeHidden();
+  await manualGroup.click();
   await expect(
     page.getByRole("button", { name: "取消忽略「测试应用」", exact: true }),
   ).toBeVisible();
 
-  /* 重启后仍保留手动忽略 */
+  /* 重启后仍保留手动忽略，且默认收起 */
   await slot.relaunch();
   const restarted = slot.page;
   await restarted.getByRole("button", { name: "已忽略", exact: true }).click();
+  const restoredManualGroup = restarted.getByRole("button", { name: "手动忽略", exact: true });
   const restoreButton = restarted.getByRole("button", {
     name: "取消忽略「测试应用」",
     exact: true,
   });
+  await expect(restoreButton).toBeHidden();
+  await restoredManualGroup.click();
   await expect(restoreButton).toBeVisible();
 
   /* 拖到侧栏分组：加入分组后自动解除手动忽略 */
