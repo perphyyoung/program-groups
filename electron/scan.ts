@@ -1,4 +1,4 @@
-import { app, shell, type NativeImage } from "electron";
+import { app, nativeImage, shell, type NativeImage } from "electron";
 import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve } from "node:path";
@@ -213,9 +213,19 @@ export interface CachedIconResult {
   cached: number;
 }
 
+/** Store 图标直接来自清单 Logo 资源，不需要 AUMID 解析 */
+export interface StoreIconCandidate {
+  kind: "store";
+  id: string;
+  name: string;
+  sourcePath: string;
+}
+
+export type IconCandidate = ShortcutCandidate | StoreIconCandidate;
+
 /** 扫描只读缓存：不 stat 源文件、不提取、不写 miss */
 export function resolveCachedIcons(
-  candidates: ShortcutCandidate[],
+  candidates: { id: string }[],
   dataDir: string,
 ): CachedIconResult {
   const icons = new Map<string, string>();
@@ -232,7 +242,7 @@ export function resolveCachedIcons(
 
 /** 提取图标到 <data>/icons/<appId>.png，返回图标路径与提取统计 */
 export async function extractIcons(
-  candidates: ShortcutCandidate[],
+  candidates: IconCandidate[],
   dataDir: string,
   onProgress?: (progress: ScanProgress) => void,
   options: { force?: boolean } = {},
@@ -256,13 +266,19 @@ export async function extractIcons(
       const iconPath = join(iconsDir, `${candidate.id}.png`);
       const missPath = join(iconsDir, `${candidate.id}.miss`);
       try {
-        let sourceMtime = Math.max(
-          statSync(candidate.targetPath).mtimeMs,
-          statSync(candidate.launchPath).mtimeMs,
-        );
-        const iconSource = iconSourceOf(candidate);
-        if (iconSource !== candidate.targetPath) {
-          sourceMtime = Math.max(sourceMtime, statSync(iconSource).mtimeMs);
+        const isStore = "sourcePath" in candidate;
+        let sourceMtime: number;
+        if (isStore) {
+          sourceMtime = statSync(candidate.sourcePath).mtimeMs;
+        } else {
+          sourceMtime = Math.max(
+            statSync(candidate.targetPath).mtimeMs,
+            statSync(candidate.launchPath).mtimeMs,
+          );
+          const iconSource = iconSourceOf(candidate);
+          if (iconSource !== candidate.targetPath) {
+            sourceMtime = Math.max(sourceMtime, statSync(iconSource).mtimeMs);
+          }
         }
         const sourceKey = String(sourceMtime);
 
@@ -283,8 +299,13 @@ export async function extractIcons(
             failed += 1;
             if (existsSync(iconPath)) icons.set(candidate.id, `icons/${candidate.id}.png`);
           } else {
-            // eslint-disable-next-line no-await-in-loop -- 同上，worker 内按顺序取图标
-            const image = await loadIconImage(candidate);
+            let image: NativeImage;
+            if (isStore) {
+              image = nativeImage.createFromPath(candidate.sourcePath);
+            } else {
+              // eslint-disable-next-line no-await-in-loop -- worker 内串行取图标
+              image = await loadIconImage(candidate);
+            }
             if (!image.isEmpty()) {
               // eslint-disable-next-line no-await-in-loop -- 同上，写完再处理下一个
               await writeFile(iconPath, image.toPNG());
@@ -300,7 +321,7 @@ export async function extractIcons(
       } catch (error) {
         failed += 1;
         log.warn(
-          `[scan] 图标提取失败 ${candidate.launchPath}: ${error instanceof Error ? error.message : String(error)}`,
+          `[scan] 图标提取失败 ${"sourcePath" in candidate ? candidate.sourcePath : candidate.launchPath}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       done += 1;

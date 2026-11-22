@@ -1,28 +1,51 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { IconCacheStatus, IconUpdateProgress } from "../lib/types";
+import type { IconSettings, IconSource, IconUpdateProgress } from "../lib/types";
 
 const props = defineProps<{
-  status: IconCacheStatus | null;
+  settings: IconSettings | null;
   busy: boolean;
   progress: IconUpdateProgress | null;
 }>();
 
 const emit = defineEmits<{
   update: [force: boolean];
+  sourcesChange: [sources: IconSource[]];
 }>();
 
 const force = ref(false);
+const selected = computed(() => new Set<IconSource>(props.settings?.sources ?? ["start"]));
+const totals = computed(() => {
+  const stats = props.settings?.stats;
+  if (!stats) return null;
+  let cached = 0;
+  let total = 0;
+  for (const source of selected.value) {
+    cached += stats[source].cached;
+    total += stats[source].total;
+  }
+  return { cached, total };
+});
 const missing = computed(() =>
-  props.status ? Math.max(0, props.status.total - props.status.cached) : 0,
+  totals.value ? Math.max(0, totals.value.total - totals.value.cached) : 0,
 );
 const percent = computed(() => {
-  if (!props.status || props.status.total === 0) return 0;
-  return Math.round((props.status.cached / props.status.total) * 100);
+  if (!totals.value || totals.value.total === 0) return 0;
+  return Math.round((totals.value.cached / totals.value.total) * 100);
 });
+const canUpdate = computed(() => !props.busy && selected.value.size > 0);
+
+function toggleSource(source: IconSource, event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  const next = new Set(selected.value);
+  if (target.checked) next.add(source);
+  else next.delete(source);
+  emit("sourcesChange", Array.from(next));
+}
 
 function startUpdate(): void {
-  if (props.busy) return;
+  if (!canUpdate.value) return;
   emit("update", force.value);
 }
 </script>
@@ -38,40 +61,76 @@ function startUpdate(): void {
         <button
           type="button"
           class="h-9 min-w-[128px] shrink-0 rounded-lg border border-slate-600/70 bg-white/5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="busy"
+          :disabled="!canUpdate"
           :aria-busy="busy"
+          :title="selected.size === 0 ? '至少选择一个图标来源' : undefined"
           @click="startUpdate"
         >
           {{ busy ? "更新中…" : force ? "重建图标缓存" : "更新图标缓存" }}
         </button>
       </div>
 
-      <div class="mt-5 grid grid-cols-3 gap-4 border-y border-white/10 py-4">
+      <div
+        role="group"
+        aria-label="图标来源"
+        class="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/10 pt-4"
+      >
+        <span class="text-xs text-slate-400">图标来源</span>
+        <label class="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            class="size-4 accent-indigo-500"
+            :checked="selected.has('start')"
+            :disabled="busy"
+            @change="toggleSource('start', $event)"
+          />
+          start
+        </label>
+        <label class="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            class="size-4 accent-indigo-500"
+            :checked="selected.has('store')"
+            :disabled="busy"
+            @change="toggleSource('store', $event)"
+          />
+          store
+        </label>
+        <label
+          class="flex w-fit cursor-not-allowed items-center gap-2 text-sm text-slate-500"
+          title="绿色软件扫描未实现"
+        >
+          <input type="checkbox" class="size-4" disabled />
+          green
+        </label>
+      </div>
+
+      <div class="mt-4 grid grid-cols-3 gap-4 border-b border-white/10 pb-4">
         <div>
           <div class="text-xs text-slate-400">已缓存</div>
           <div class="mt-1 text-2xl font-semibold tabular-nums text-slate-100">
-            {{ status ? status.cached : "—" }}
+            {{ totals ? totals.cached : "—" }}
           </div>
         </div>
         <div>
           <div class="text-xs text-slate-400">未缓存</div>
           <div class="mt-1 text-2xl font-semibold tabular-nums text-slate-100">
-            {{ status ? missing : "—" }}
+            {{ totals ? missing : "—" }}
           </div>
         </div>
         <div>
           <div class="text-xs text-slate-400">覆盖率</div>
           <div class="mt-1 text-2xl font-semibold tabular-nums text-slate-100">
-            {{ status ? `${percent}%` : "—" }}
+            {{ totals ? `${percent}%` : "—" }}
           </div>
         </div>
       </div>
 
       <progress
-        v-if="status && status.total > 0"
+        v-if="totals && totals.total > 0"
         aria-label="图标缓存进度"
-        :value="status.cached"
-        :max="status.total"
+        :value="totals.cached"
+        :max="totals.total"
         class="mt-4 h-1.5 w-full overflow-hidden rounded-full accent-indigo-500 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-white/10 [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-indigo-500"
       ></progress>
 
@@ -110,8 +169,13 @@ function startUpdate(): void {
           aria-live="polite"
           class="text-sm tabular-nums text-slate-400"
         >
-          已处理 {{ progress.done }} / {{ progress.total }} · 新增 {{ progress.extracted }} · 复用
-          {{ progress.cached }} · 失败 {{ progress.failed }}
+          <template v-if="progress.total === 0">
+            {{ progress.detail ?? "读取 Store 应用" }}…
+          </template>
+          <template v-else>
+            已处理 {{ progress.done }} / {{ progress.total }} · 新增 {{ progress.extracted }} · 复用
+            {{ progress.cached }} · 失败 {{ progress.failed }}
+          </template>
         </p>
       </div>
     </div>

@@ -9,6 +9,8 @@ import type {
   EntryType,
   GroupSortDirection,
   GroupSortMode,
+  IconCacheStats,
+  IconSource,
   ScanSummary,
   ScannedApp,
 } from "../src/lib/types";
@@ -288,14 +290,50 @@ export function setIconFiles(entries: { id: string; iconFile: string }[]): numbe
   return changed;
 }
 
-/** 可提取图标的活跃应用（start / exe），Store AUMID 不计入分母 */
-export function countIconCache(): { cached: number; total: number } {
-  const row = requireDb()
+/** 可提取图标的活跃应用按来源统计；green 暂无数据 */
+export function countIconStats(): IconCacheStats {
+  const rows = requireDb()
     .prepare(
-      "SELECT COUNT(*) AS total, COUNT(icon_file) AS cached FROM apps WHERE status = 'active' AND entry_type = 'app' AND launch_kind <> 'aumid'",
+      "SELECT source, COUNT(*) AS total, COUNT(icon_file) AS cached FROM apps WHERE status = 'active' AND entry_type = 'app' GROUP BY source",
     )
-    .get() as unknown as { total: number; cached: number };
-  return { cached: Number(row.cached), total: Number(row.total) };
+    .all() as unknown as { source: string; total: number; cached: number }[];
+  const stats: IconCacheStats = {
+    start: { cached: 0, total: 0 },
+    store: { cached: 0, total: 0 },
+    green: { cached: 0, total: 0 },
+  };
+  for (const row of rows) {
+    if (row.source === "start" || row.source === "store") {
+      stats[row.source] = { cached: Number(row.cached), total: Number(row.total) };
+    }
+  }
+  return stats;
+}
+
+const ICON_SOURCES_KEY = "icon_sources";
+
+export function isIconSource(value: unknown): value is IconSource {
+  return value === "start" || value === "store" || value === "green";
+}
+
+export function getIconSources(): IconSource[] {
+  const row = requireDb().prepare("SELECT value FROM meta WHERE key = ?").get(ICON_SOURCES_KEY) as
+    | { value: string }
+    | undefined;
+  if (!row) return ["start"];
+  const selected = row.value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(isIconSource);
+  return selected.length > 0 ? Array.from(new Set(selected)) : ["start"];
+}
+
+export function setIconSources(sources: IconSource[]): void {
+  requireDb()
+    .prepare(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(ICON_SOURCES_KEY, sources.join(","));
 }
 
 export function listManualIgnoredIds(): Set<string> {

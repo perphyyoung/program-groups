@@ -7,6 +7,14 @@
 - 当前项目的框架为 electron，跨项目通用规则中的 tauri/rust 部分可忽略
 - 不要自动执行 pnpm release
 
+## 编辑顺序
+
+- 同一文件禁止在同一条消息里并行发起多个编辑；一次只改一处。
+- 大文件用局部 Edit，禁止整文件 Write。
+- 不同文件可以并行；同文件按「读取 → 单点编辑 → 读取确认」串行。
+- 编辑阶段不要过长：每完成一组文件先输出状态，再继续。
+- old_string 不匹配时先读文件，不猜、不重试同一串。
+
 ## 明确取舍
 
 - 不做注册表扫描：本机实测 637 个卸载表项中可用启动 104 个，其中 99 个开始菜单已有；App Paths 169 项也没有超出 `start + store` 的真实应用。注册表只带来运行库、系统组件、安装器与辅助进程噪声，收益不抵成本；无快捷方式的应用由手动添加 exe 兜底。
@@ -18,7 +26,7 @@
 - 分组排序：手动排序下仅行首握把可拖，插入线提示落点；名称 / 创建顺序只改变展示，不覆盖 `groups.sort`；正/倒序全局持久化，手动倒序拖拽按可见顺序反写。
 - 应用分类：`status` 只表示 `active / missing`；`entry_type` 表示 `app / uninstaller / installer / system`；`source` 表示 `start / store`。卸载器、安装器、系统工具只改 `entry_type`，不计入应用与缺失。Store 收 `SignatureKind` 为 `Store` / `Developer` 的应用，其他打包应用进已忽略「Store 自动忽略应用」。
 - 开始菜单扫描根目录是 `Start Menu` 本身，不是 `Start Menu\Programs`：根级 `.lnk`（如 SumatraPDF）必须纳入，`Programs` 子目录递归覆盖。
-- 图标提取与扫描分离：扫描只读 `<data>/icons` 已有缓存，不提取图标；提取只在设置页手动触发，默认增量，可勾选全量重建。
+- 图标提取与扫描分离：扫描只读 `<data>/icons` 已有缓存，不提取图标；提取只在设置页手动触发，默认增量，可勾选全量重建。图标来源默认只勾 `start`；`store` 取清单 Logo，`green` 占位禁用。
 - 行组件命名：通用布局用 `RowLayout`，领域行用 `AppRow` / `IgnoredShortcutRow` / `ManualIgnoredAppRow`，不再使用 `ListRow` / `AppListRow`。
 
 ## 文档分工

@@ -1,6 +1,7 @@
 export type AppStatus = "active" | "missing";
 export type EntryType = "app" | "uninstaller" | "installer" | "system";
 export type AppSource = "start" | "store";
+export type IconSource = AppSource | "green";
 export type AppLaunchKind = "lnk" | "exe" | "aumid";
 
 export interface ScannedApp {
@@ -11,6 +12,8 @@ export interface ScannedApp {
   exePath: string;
   source: AppSource;
   iconFile: string | null;
+  /** Store 应用清单里的图标资源绝对路径，仅用于图标缓存 */
+  iconSource?: string | null;
 }
 
 export interface AppRecord {
@@ -103,9 +106,21 @@ export interface ScanSummary {
   changed: boolean;
 }
 
-export interface IconCacheStatus {
+export interface IconCacheStat {
   cached: number;
   total: number;
+}
+
+export type IconCacheStats = Record<IconSource, IconCacheStat>;
+
+export interface IconSettings {
+  sources: IconSource[];
+  stats: IconCacheStats;
+}
+
+export interface IconUpdateOptions {
+  force: boolean;
+  sources: IconSource[];
 }
 
 export interface IconUpdateResult {
@@ -118,6 +133,7 @@ export interface IconUpdateResult {
 export interface IconUpdateProgress {
   done: number;
   total: number;
+  detail?: string;
   extracted: number;
   cached: number;
   failed: number;

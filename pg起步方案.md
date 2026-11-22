@@ -171,6 +171,8 @@ WHERE a.status = 'active'
 - 图标源优先级：快捷方式 `IconLocation` → 目标 exe → `.lnk` 兜底。不能直接把 `.lnk` 当图标源，Windows 会返回通用快捷方式图标，而不是目标程序图标。
 - 扫描与提取分离：扫描只检查 `<data>/icons/<appId>.png` 是否存在，写入 `icon_file`；不 stat 源文件、不提取、不写 `.miss`。
 - 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标；勾选「全量重建」时忽略缓存重新提取。失败保留旧图标。
+- 设置页「图标来源」控制提取范围：`start` / `store` / `green`；默认只勾 `start`，选择写入 `meta.icon_sources`。`green` 暂无扫描实现，置灰。
+- Store 图标不解析 AUMID：读 `Get-AppxPackageManifest` 的 `Square44x44Logo`，目录用 `[IO.Path]::GetDirectoryName`；按限定词 token 解析，不依赖顺序，排除 `contrast-*`。优先级：targetsize 48/44/32/256，同尺寸优先 `altform-unplated`；无 targetsize 用 scale-200；基名最后；再回退同目录 `AppList.*`。
 - 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/<appId>.png`。
 - 图标通过 `pg-icon://<appId>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
 - 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
@@ -285,8 +287,9 @@ WHERE a.status = 'active'
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary`（含 `cachedIcons`；只读缓存） |
-| `icons:status` | — | `{ cached: number; total: number }`，只统计可提取图标的活跃应用 |
-| `icons:update` | `force` | `{ extracted, cached, failed, force }`，默认增量，`force` 全量重建 |
+| `icons:settings` | — | `{ sources: IconSource[]; stats: Record<IconSource, { cached; total }> }`，默认仅 `start` |
+| `icons:setSources` | `sources` | `void`，写入 `meta.icon_sources` |
+| `icons:update` | `{ force, sources }` | `{ extracted, cached, failed, force }`，按来源增量提取；`force` 全量重建 |
 | `groups:create` | `name` | `GroupEntry` |
 | `groups:rename` | `id, name` | `void` |
 | `groups:delete` | `id` | `void` |

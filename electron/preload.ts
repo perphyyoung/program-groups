@@ -3,7 +3,9 @@ import type {
   GroupsData,
   GroupSortDirection,
   GroupSortMode,
-  IconCacheStatus,
+  IconSettings,
+  IconSource,
+  IconUpdateOptions,
   IconUpdateProgress,
   IconUpdateResult,
   LibraryData,
@@ -15,9 +17,11 @@ contextBridge.exposeInMainWorld("api", {
   loadLibrary: (): Promise<LibraryData> => ipcRenderer.invoke("library:load"),
   loadGroups: (): Promise<GroupsData> => ipcRenderer.invoke("library:groups"),
   scanLibrary: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scan"),
-  iconStatus: (): Promise<IconCacheStatus> => ipcRenderer.invoke("icons:status"),
-  updateIcons: (force: boolean): Promise<IconUpdateResult> =>
-    ipcRenderer.invoke("icons:update", force),
+  iconSettings: (): Promise<IconSettings> => ipcRenderer.invoke("icons:settings"),
+  setIconSources: (sources: IconSource[]): Promise<void> =>
+    ipcRenderer.invoke("icons:setSources", sources),
+  updateIcons: (options: IconUpdateOptions): Promise<IconUpdateResult> =>
+    ipcRenderer.invoke("icons:update", options),
   createGroup: (name: string) => ipcRenderer.invoke("groups:create", name),
   renameGroup: (id: string, name: string): Promise<void> =>
     ipcRenderer.invoke("groups:rename", id, name),

@@ -26,7 +26,8 @@ import type {
   GroupEntry,
   GroupSortDirection,
   GroupSortMode,
-  IconCacheStatus,
+  IconSettings,
+  IconSource,
   IconUpdateProgress,
   IgnoredItem,
   IgnoreReason,
@@ -57,7 +58,7 @@ const scanning = ref(false);
 const scanProgress = ref<ScanProgress | null>(null);
 const showScanProgress = ref(false);
 const scanError = ref<string | null>(null);
-const iconStatus = ref<IconCacheStatus | null>(null);
+const iconSettings = ref<IconSettings | null>(null);
 const iconUpdating = ref(false);
 const iconProgress = ref<IconUpdateProgress | null>(null);
 const targetGroupId = ref("");
@@ -344,7 +345,7 @@ function reasonLabel(reason: IgnoreReason): string {
 function selectScope(next: AppScope): void {
   scope.value = next;
   clearSelection();
-  if (next.kind === "settings") void loadIconStatus();
+  if (next.kind === "settings") void loadIconSettings();
 }
 
 function ensureTargetGroup(): void {
@@ -463,22 +464,39 @@ function onScanProgress(progress: ScanProgress): void {
   scanProgress.value = progress;
 }
 
-async function loadIconStatus(): Promise<void> {
+async function loadIconSettings(): Promise<void> {
   try {
-    iconStatus.value = await window.api.iconStatus();
+    iconSettings.value = await window.api.iconSettings();
   } catch (error) {
     showToast(`读取图标缓存状态失败：${errorMessage(error)}`, "error");
   }
 }
 
+async function setIconSources(sources: IconSource[]): Promise<void> {
+  const previous = iconSettings.value;
+  if (!previous) return;
+  iconSettings.value = { ...previous, sources };
+  try {
+    await window.api.setIconSources(sources);
+  } catch (error) {
+    iconSettings.value = previous;
+    showToast(`保存图标来源失败：${errorMessage(error)}`, "error");
+  }
+}
+
 async function updateIcons(force: boolean): Promise<void> {
   if (iconUpdating.value) return;
+  const sources: IconSource[] = Array.from(iconSettings.value?.sources ?? ["start"]);
+  if (sources.length === 0) {
+    showToast("请至少选择一个图标来源", "error");
+    return;
+  }
   iconUpdating.value = true;
   iconProgress.value = null;
   try {
-    const result = await window.api.updateIcons(force);
+    const result = await window.api.updateIcons({ force, sources });
     await load();
-    await loadIconStatus();
+    await loadIconSettings();
     showToast(
       `图标缓存已更新：新增 ${result.extracted}，复用 ${result.cached}，失败 ${result.failed}`,
       result.failed > 0 ? "error" : "info",
@@ -759,10 +777,11 @@ onBeforeUnmount(() => {
         >
           <SettingsPage
             v-if="scope.kind === 'settings'"
-            :status="iconStatus"
+            :settings="iconSettings"
             :busy="iconUpdating"
             :progress="iconProgress"
             @update="updateIcons"
+            @sources-change="setIconSources"
           />
 
           <div v-else-if="scope.kind === 'ignored'" class="h-full">

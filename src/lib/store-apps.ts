@@ -5,6 +5,7 @@ export interface StoreAppRecord {
   name: string;
   aumid: string;
   signatureKind: string;
+  iconSource: string | null;
 }
 
 export function appIdForAumid(aumid: string): string {
@@ -18,7 +19,12 @@ export function parseStoreApps(raw: unknown): StoreAppRecord[] {
   const byAumid = new Map<string, StoreAppRecord>();
   for (const item of items) {
     if (!item || typeof item !== "object") continue;
-    const record = item as { Name?: unknown; AppID?: unknown; SignatureKind?: unknown };
+    const record = item as {
+      Name?: unknown;
+      AppID?: unknown;
+      SignatureKind?: unknown;
+      IconSource?: unknown;
+    };
     if (typeof record.Name !== "string" || typeof record.AppID !== "string") continue;
     const name = record.Name.trim();
     const aumid = record.AppID.trim();
@@ -27,7 +33,11 @@ export function parseStoreApps(raw: unknown): StoreAppRecord[] {
       typeof record.SignatureKind === "string" && record.SignatureKind.trim()
         ? record.SignatureKind.trim()
         : "未知";
-    byAumid.set(aumid, { name, aumid, signatureKind });
+    const iconSource =
+      typeof record.IconSource === "string" && record.IconSource.trim()
+        ? record.IconSource.trim()
+        : null;
+    byAumid.set(aumid, { name, aumid, signatureKind, iconSource });
   }
   return Array.from(byAumid.values());
 }
@@ -49,6 +59,7 @@ export function classifyStoreApps(records: StoreAppRecord[]): {
         exePath: "",
         source: "store",
         iconFile: null,
+        iconSource: record.iconSource,
       });
     } else {
       ignored.push({

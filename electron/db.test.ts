@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addMembers,
   closeDatabase,
-  countIconCache,
+  countIconStats,
   countMissing,
   createGroup,
   deleteGroup,
@@ -73,9 +73,9 @@ describe("database", () => {
 
   it("图标缓存：只更新已存在应用，统计跟随", () => {
     reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T00:00:00.000Z");
-    expect(countIconCache()).toEqual({ cached: 0, total: 2 });
+    expect(countIconStats().start).toEqual({ cached: 0, total: 2 });
     expect(setIconFiles([{ id: "a", iconFile: "icons/a.png" }])).toBe(1);
-    expect(countIconCache()).toEqual({ cached: 1, total: 2 });
+    expect(countIconStats().start).toEqual({ cached: 1, total: 2 });
     expect(listActiveApps().find((item) => item.id === "a")?.iconFile).toBe("icons/a.png");
     expect(setIconFiles([{ id: "missing", iconFile: "icons/x.png" }])).toBe(0);
   });

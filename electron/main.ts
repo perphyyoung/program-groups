@@ -15,14 +15,16 @@ import { pathToFileURL } from "node:url";
 import {
   addMembers,
   closeDatabase,
-  countIconCache,
+  countIconStats,
   countMissing,
   createGroup,
   deleteGroup,
   getApp,
   getGroupSortDirection,
   getGroupSortMode,
+  getIconSources,
   groupExists,
+  isIconSource,
   listActiveApps,
   listGroups,
   listManualIgnoredIds,
@@ -40,10 +42,18 @@ import {
   setGroupSortDirection,
   setGroupSortMode,
   setIconFiles,
+  setIconSources,
   setNote,
 } from "./db";
 import { log, logPath } from "./logger";
-import { extractIcons, resolveCachedIcons, scanStartMenu, startMenuRoots } from "./scan";
+import {
+  extractIcons,
+  resolveCachedIcons,
+  scanStartMenu,
+  startMenuRoots,
+  type IconCandidate,
+  type StoreIconCandidate,
+} from "./scan";
 import { scanStoreApps } from "./store-scan";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
@@ -53,7 +63,9 @@ import type {
   AppSource,
   GroupEntry,
   GroupsData,
-  IconCacheStatus,
+  IconSettings,
+  IconUpdateOptions,
+  IconUpdateProgress,
   IconUpdateResult,
   LibraryData,
   ScanProgress,
@@ -206,7 +218,10 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
 
     const startResult = scanStartMenu(onProgress);
     const storeResult = await scanStoreApps(onProgress);
-    const iconResult = resolveCachedIcons(startResult.candidates, dataRoot());
+    const iconResult = resolveCachedIcons(
+      [...startResult.candidates, ...storeResult.apps],
+      dataRoot(),
+    );
     const discovered: ScannedApp[] = [
       ...startResult.candidates.map((candidate) => ({
         id: candidate.id,
@@ -217,7 +232,10 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
         source: "start" as const,
         iconFile: iconResult.icons.get(candidate.id) ?? null,
       })),
-      ...storeResult.apps,
+      ...storeResult.apps.map((storeApp) => ({
+        ...storeApp,
+        iconFile: iconResult.icons.get(storeApp.id) ?? null,
+      })),
     ];
     const scannedSources = new Set<AppSource>(["start"]);
     if (storeResult.ok) scannedSources.add("store");
@@ -252,40 +270,78 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
 }
 
 /** 图标提取独立于扫描，只在设置页手动触发 */
-async function updateIcons(sender: WebContents, force: boolean): Promise<IconUpdateResult> {
+async function updateIcons(
+  sender: WebContents,
+  options: IconUpdateOptions,
+): Promise<IconUpdateResult> {
   if (scanning) throw new Error("扫描正在进行");
   if (iconUpdating) throw new Error("图标更新正在进行");
+  const sources = options.sources;
+  if (sources.length === 0) throw new Error("未选择图标来源");
   iconUpdating = true;
   try {
-    const startResult = scanStartMenu();
+    const sendProgress = (progress: IconUpdateProgress): void => {
+      sender.send("icons:progress", progress);
+    };
+    const startCandidates = sources.includes("start") ? scanStartMenu().candidates : [];
+    const storeTasks: StoreIconCandidate[] = [];
+    if (sources.includes("store")) {
+      const storeResult = await scanStoreApps(
+        (progress) => {
+          sendProgress({
+            done: 0,
+            total: 0,
+            detail: progress.detail ?? "读取 Store 应用",
+            extracted: 0,
+            cached: 0,
+            failed: 0,
+          });
+        },
+        { withIcons: true },
+      );
+      if (!storeResult.ok) throw new Error("Store 扫描失败");
+      for (const storeApp of storeResult.apps) {
+        if (storeApp.iconSource) {
+          storeTasks.push({
+            kind: "store",
+            id: storeApp.id,
+            name: storeApp.name,
+            sourcePath: storeApp.iconSource,
+          });
+        }
+      }
+    }
+    const candidates: IconCandidate[] = [...startCandidates, ...storeTasks];
     const iconResult = await extractIcons(
-      startResult.candidates,
+      candidates,
       dataRoot(),
       (progress) => {
-        sender.send("icons:progress", {
+        sendProgress({
           done: progress.done,
           total: progress.total,
+          detail: "提取图标",
           extracted: progress.extracted ?? 0,
           cached: progress.cached ?? 0,
           failed: progress.failed ?? 0,
         });
       },
-      { force },
+      { force: options.force },
     );
-    const files = startResult.candidates.flatMap((candidate) => {
+    const files = candidates.flatMap((candidate) => {
       const iconFile = iconResult.icons.get(candidate.id);
       return iconFile ? [{ id: candidate.id, iconFile }] : [];
     });
     const changed = setIconFiles(files);
     log.info(
-      `[icons] force=${force} extracted=${iconResult.extracted} cached=${iconResult.cached} ` +
+      `[icons] sources=${sources.join(",")} force=${options.force} ` +
+        `extracted=${iconResult.extracted} cached=${iconResult.cached} ` +
         `failed=${iconResult.failed} changed=${changed}`,
     );
     return {
       extracted: iconResult.extracted,
       cached: iconResult.cached,
       failed: iconResult.failed,
-      force,
+      force: options.force,
     };
   } finally {
     iconUpdating = false;
@@ -400,12 +456,35 @@ ipcMain.handle("library:scan", (event) =>
   handleIpcAsync("library:scan", () => runScan(event.sender)),
 );
 
-ipcMain.handle("icons:status", () =>
-  handleIpc("icons:status", (): IconCacheStatus => countIconCache()),
+ipcMain.handle("icons:settings", () =>
+  handleIpc("icons:settings", (): IconSettings => ({
+    sources: getIconSources(),
+    stats: countIconStats(),
+  })),
 );
 
-ipcMain.handle("icons:update", (event, force: unknown) =>
-  handleIpcAsync("icons:update", () => updateIcons(event.sender, force === true)),
+ipcMain.handle("icons:setSources", (_event, sources: unknown) =>
+  handleIpc("icons:setSources", () => {
+    if (!Array.isArray(sources)) throw new Error("图标来源无效");
+    const selected = sources.filter(isIconSource);
+    if (selected.length === 0 || selected.length !== sources.length) {
+      throw new Error("图标来源无效");
+    }
+    setIconSources(selected);
+  }),
+);
+
+ipcMain.handle("icons:update", (event, options: unknown) =>
+  handleIpcAsync("icons:update", () => {
+    if (!options || typeof options !== "object") throw new Error("图标更新参数无效");
+    const input = options as { force?: unknown; sources?: unknown };
+    if (!Array.isArray(input.sources)) throw new Error("图标来源无效");
+    const sources = input.sources.filter(isIconSource);
+    if (sources.length === 0 || sources.length !== input.sources.length) {
+      throw new Error("图标来源无效");
+    }
+    return updateIcons(event.sender, { force: input.force === true, sources });
+  }),
 );
 
 ipcMain.handle("groups:create", (_event, name: unknown) =>

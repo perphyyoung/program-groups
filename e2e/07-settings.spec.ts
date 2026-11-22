@@ -6,6 +6,9 @@ test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) 
   await expect(page.getByRole("button", { name: "测试应用", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "图标缓存", exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "start", exact: true })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "store", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "green", exact: true })).toBeDisabled();
   const iconRegion = page.getByRole("region", { name: "图标缓存", exact: true });
   const cacheProgress = iconRegion.getByRole("progressbar", {
     name: "图标缓存进度",

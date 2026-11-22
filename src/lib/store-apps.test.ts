@@ -12,17 +12,28 @@ describe("store apps", () => {
 
   it("解析数组、单对象并去重", () => {
     expect(parseStoreApps([{ Name: "计算器", AppID: aumid, SignatureKind: "Store" }])).toEqual([
-      { name: "计算器", aumid, signatureKind: "Store" },
+      { name: "计算器", aumid, signatureKind: "Store", iconSource: null },
     ]);
-    expect(parseStoreApps({ Name: "计算器", AppID: aumid })).toEqual([
-      { name: "计算器", aumid, signatureKind: "未知" },
+    expect(
+      parseStoreApps({
+        Name: "计算器",
+        AppID: aumid,
+        IconSource: "C:\\Apps\\logo.png",
+      }),
+    ).toEqual([
+      {
+        name: "计算器",
+        aumid,
+        signatureKind: "未知",
+        iconSource: "C:\\Apps\\logo.png",
+      },
     ]);
     expect(
       parseStoreApps([
         { Name: "计算器", AppID: aumid, SignatureKind: "System" },
         { Name: "计算器副本", AppID: aumid, SignatureKind: "Store" },
       ]),
-    ).toEqual([{ name: "计算器副本", aumid, signatureKind: "Store" }]);
+    ).toEqual([{ name: "计算器副本", aumid, signatureKind: "Store", iconSource: null }]);
   });
 
   it("丢弃无效项", () => {
@@ -39,11 +50,31 @@ describe("store apps", () => {
 
   it("Store 与 Developer 归入应用，其他归入已忽略", () => {
     const result = classifyStoreApps([
-      { name: "计算器", aumid, signatureKind: "Store" },
-      { name: "开发应用", aumid: "DevApp_8wekyb3d8bbwe!App", signatureKind: "Developer" },
-      { name: "系统应用", aumid: "SystemApp_8wekyb3d8bbwe!App", signatureKind: "System" },
-      { name: "企业应用", aumid: "EntApp_8wekyb3d8bbwe!App", signatureKind: "Enterprise" },
-      { name: "无签名应用", aumid: "NoneApp_8wekyb3d8bbwe!App", signatureKind: "None" },
+      { name: "计算器", aumid, signatureKind: "Store", iconSource: null },
+      {
+        name: "开发应用",
+        aumid: "DevApp_8wekyb3d8bbwe!App",
+        signatureKind: "Developer",
+        iconSource: null,
+      },
+      {
+        name: "系统应用",
+        aumid: "SystemApp_8wekyb3d8bbwe!App",
+        signatureKind: "System",
+        iconSource: null,
+      },
+      {
+        name: "企业应用",
+        aumid: "EntApp_8wekyb3d8bbwe!App",
+        signatureKind: "Enterprise",
+        iconSource: null,
+      },
+      {
+        name: "无签名应用",
+        aumid: "NoneApp_8wekyb3d8bbwe!App",
+        signatureKind: "None",
+        iconSource: null,
+      },
     ]);
 
     expect(result.apps.map((app) => app.name)).toEqual(["计算器", "开发应用"]);
@@ -55,6 +86,7 @@ describe("store apps", () => {
       exePath: "",
       source: "store",
       iconFile: null,
+      iconSource: null,
     });
     expect(result.ignored.map((item) => item.reason)).toEqual([
       "store-auto-ignore",
