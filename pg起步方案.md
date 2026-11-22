@@ -84,9 +84,10 @@ CREATE TABLE apps (
   id               TEXT PRIMARY KEY,           -- sha1(规范化 exe 路径) 前 16 位
   name             TEXT NOT NULL,              -- 开始菜单快捷方式名
   launch_path      TEXT NOT NULL,              -- .lnk 或 .exe，启动时直接用
-  launch_kind      TEXT NOT NULL,              -- 'lnk' | 'exe'
-  exe_path         TEXT NOT NULL,              -- 规范化后的真实 exe 路径，用于去重
+  launch_kind      TEXT NOT NULL,              -- 'lnk' | 'exe' | 'aumid'
+  exe_path         TEXT NOT NULL,              -- 规范化后的真实 exe 路径，用于去重；AUMID 为空
   icon_file        TEXT,                       -- 相对数据目录的 icons/xxx.png
+  source           TEXT NOT NULL DEFAULT 'start', -- 'start' | 'store' | 'registry'
   status           TEXT NOT NULL DEFAULT 'active', -- 'active' | 'missing'
   entry_type       TEXT NOT NULL DEFAULT 'app',    -- 'app' | 'uninstaller' | 'installer' | 'system'
   first_seen_at    TEXT NOT NULL,
@@ -195,6 +196,7 @@ MVP 只扫描开始菜单，因此：
 - 重复快捷方式不进入侧栏计数，但作为独立分组「重复快捷方式」排在最后，标注已收录为哪个应用；每行可「启动」，或用行菜单「打开链接路径」定位 `.lnk`，由用户自行决定是否删除。
 - 全部应用栏提供「包含已忽略项」复选框，默认不勾选；勾选后在应用列表下方追加已忽略项（含手动忽略应用）并参与搜索，规则项不可选中、不可归组，但可启动与查看路径；手动忽略可取消，重复快捷方式不列入。
 - 应用行尾提供「手动忽略」：应用从各栏收起，已忽略栏顶部出现「手动忽略」组；状态落库，拖入分组时自动恢复。
+- Store/UWP 应用作为 `store` 来源进入列表；行名称旁显示来源徽标 `start` / `store` / `registry`。Store 用 AUMID 启动，路径入口置灰。
 - 分组行尾提供「⋯」菜单：重命名分组、删除分组；右键分组行打开同一菜单。删除确认显示组内应用数与归属后果，只删分组与归属，不卸载应用。
 - 「未分组」不可删除、不可改名；它是查询结果，不是数据。
 - 归组后计数实时减少；全部归完显示空态「所有应用都已归类」。
@@ -233,7 +235,8 @@ MVP 只扫描开始菜单，因此：
 
 ### 6.1 启动
 
-- `apps:launch` 调 `shell.openPath(launch_path)`；`.lnk` 优先，保留快捷方式参数与工作目录语义。已忽略行通过 `shortcuts:launch` 启动对应 `.lnk`，同样校验开始菜单范围。
+- `apps:launch` 对 `launch_kind='lnk'` 调 `shell.openPath(launch_path)`；`.lnk` 优先，保留快捷方式参数与工作目录语义。已忽略行通过 `shortcuts:launch` 启动对应 `.lnk`，同样校验开始菜单范围。
+- `launch_kind='aumid'` 用 `explorer.exe shell:AppsFolder\<AUMID>` 启动，不做文件存在检查；启动失败只提示，不直接标 missing。
 - 行菜单「打开目标路径」「打开链接路径」分别通过 `paths:reveal`、`apps:revealShortcut` 在资源管理器中定位；打开前用 `paths:check` 判断路径是否存在，缺失项置灰。
 - 启动失败：文件不存在时标为 `missing` 并刷新列表，轻提示「启动失败：文件不存在」；权限不足、被安全软件拦截等其他错误只提示，不改状态。
 - 不在 pg 内做「以管理员身份运行」；需要时用户从开始菜单右键。
@@ -367,6 +370,7 @@ MVP 只扫描开始菜单，因此：
 - 重启应用，分组、归属、图标全部保留。
 - 搜索「图」只显示名称/exe 名匹配的应用；清空恢复完整列表。
 - 点行尾「启动」能启动；启动路径失效时提示并标记缺失。
+- 扫描后 Store/UWP 应用出现，来源徽标为 `store`；可分组、备注、启动；卸载后刷新标缺失，路径入口置灰。
 - 行右键菜单固定「启动 / 打开目标路径 / 打开链接路径」，缺失项置灰；备注输入框内保留系统右键菜单。
 - 删除开始菜单快捷方式后刷新：真实应用从列表消失、底部显示缺失数；卸载器 / 安装器 / 系统工具不计入缺失；重新放回后刷新，应用回到原分组。
 - 开始菜单里没有快捷方式的已安装应用不会出现（MVP 已知限制，后续用注册表扫描与手动添加兜底）。
@@ -452,6 +456,7 @@ MVP 只扫开始菜单，注册表的初步方案保留在这里，后续实现�
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
+- 来源：开始菜单 `.lnk` 与 Store/UWP AUMID；行名称旁显示 `start` / `store` / `registry` 徽标，Store 通过 AUMID 启动
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加规则忽略项并参与搜索；默认不加载，重复项不列入
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复

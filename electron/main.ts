@@ -9,6 +9,7 @@ import {
   type WebContents,
 } from "electron";
 import { existsSync, mkdirSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, extname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -41,16 +42,19 @@ import {
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
+import { scanStoreApps } from "./store-scan";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
   AppRecord,
+  AppSource,
   GroupEntry,
   GroupsData,
   LibraryData,
   ScanProgress,
   ScanSummary,
+  ScannedApp,
 } from "../src/lib/types";
 
 protocol.registerSchemesAsPrivileged([
@@ -130,6 +134,7 @@ function toEntry(item: AppRecord, groupIdsByApp: Map<string, string[]>): AppEntr
     launchKind: item.launchKind,
     exePath: item.exePath,
     iconFile: item.iconFile,
+    source: item.source,
     status: item.status,
     firstSeenAt: item.firstSeenAt,
     lastSeenAt: item.lastSeenAt,
@@ -168,6 +173,21 @@ function loadGroups(): GroupsData {
 
 let scanning = false;
 
+function launchAumid(aumid: string): Promise<void> {
+  return new Promise((done, fail) => {
+    const child = spawn("explorer.exe", [`shell:AppsFolder\\${aumid}`], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", fail);
+    child.once("spawn", () => {
+      child.unref();
+      done();
+    });
+  });
+}
+
 async function runScan(sender: WebContents): Promise<ScanSummary> {
   if (scanning) throw new Error("扫描正在进行");
   scanning = true;
@@ -178,32 +198,46 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       sender.send("scan:progress", progress);
     };
 
-    const result = scanStartMenu(onProgress);
-    const iconResult = await extractIcons(result.candidates, dataRoot(), onProgress);
-    const discovered = result.candidates.map((candidate) => ({
-      ...candidate,
-      iconFile: iconResult.icons.get(candidate.id) ?? null,
-    }));
-    const reconciled = reconcile(discovered, scanStartedAt);
+    const startResult = scanStartMenu(onProgress);
+    sender.send("scan:progress", { phase: "store", done: 0, total: 1 });
+    const storeResult = await scanStoreApps();
+    sender.send("scan:progress", { phase: "store", done: 1, total: 1 });
+    const iconResult = await extractIcons(startResult.candidates, dataRoot(), onProgress);
+    const discovered: ScannedApp[] = [
+      ...startResult.candidates.map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        launchPath: candidate.launchPath,
+        launchKind: candidate.launchKind,
+        exePath: candidate.exePath,
+        source: "start" as const,
+        iconFile: iconResult.icons.get(candidate.id) ?? null,
+      })),
+      ...storeResult.apps,
+    ];
+    const scannedSources = new Set<AppSource>(["start"]);
+    if (storeResult.ok) scannedSources.add("store");
+    const reconciled = reconcile(discovered, scanStartedAt, scannedSources);
     const discoveredIds = new Set(discovered.map((item) => item.id));
     const entryTypeChanges = setEntryTypes(
-      entryTypesForIgnored(result.ignoredItems, discoveredIds),
+      entryTypesForIgnored(startResult.ignoredItems, discoveredIds),
     );
     const summary: ScanSummary = {
-      scanned: result.scanned,
+      scanned: startResult.scanned + storeResult.apps.length,
       kept: discovered.length,
-      ignored: result.ignored,
-      ignoredItems: result.ignoredItems,
-      duplicate: result.duplicate,
-      duplicateItems: result.duplicateItems,
+      ignored: startResult.ignored,
+      ignoredItems: startResult.ignoredItems,
+      duplicate: startResult.duplicate,
+      duplicateItems: startResult.duplicateItems,
       ...reconciled,
       changed: reconciled.changed || iconResult.extracted > 0 || entryTypeChanges > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
-      `[scan] scanned=${summary.scanned} kept=${summary.kept} ignored=${summary.ignored} ` +
-        `duplicate=${summary.duplicate} icons=${iconResult.extracted}/${iconResult.cached} ` +
-        `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
+      `[scan] scanned=${summary.scanned} kept=${summary.kept} store=${storeResult.apps.length} ` +
+        `storeOk=${storeResult.ok} ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
+        `icons=${iconResult.extracted}/${iconResult.cached} added=${summary.added} ` +
+        `missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
     return summary;
   } finally {
@@ -371,6 +405,14 @@ ipcMain.handle("apps:launch", (_event, appId: unknown) =>
   handleIpcAsync("apps:launch", async () => {
     const appRecord = getApp(assertId(appId));
     if (!appRecord) return { ok: false, error: "应用不存在" };
+    if (appRecord.launchKind === "aumid") {
+      try {
+        await launchAumid(appRecord.launchPath);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
     if (!existsSync(appRecord.launchPath)) {
       markAppMissing(appRecord.id);
       return { ok: false, error: "文件不存在" };

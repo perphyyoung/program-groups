@@ -1,13 +1,26 @@
 export type AppStatus = "active" | "missing";
 export type EntryType = "app" | "uninstaller" | "installer" | "system";
+export type AppSource = "start" | "store" | "registry";
+export type AppLaunchKind = "lnk" | "exe" | "aumid";
+
+export interface ScannedApp {
+  id: string;
+  name: string;
+  launchPath: string;
+  launchKind: AppLaunchKind;
+  exePath: string;
+  source: AppSource;
+  iconFile: string | null;
+}
 
 export interface AppRecord {
   id: string;
   name: string;
   launchPath: string;
-  launchKind: "lnk" | "exe";
+  launchKind: AppLaunchKind;
   exePath: string;
   iconFile: string | null;
+  source: AppSource;
   status: AppStatus;
   firstSeenAt: string;
   lastSeenAt: string;
@@ -85,7 +98,7 @@ export interface ScanSummary {
 }
 
 export interface ScanProgress {
-  phase: "start-menu" | "icons" | "done";
+  phase: "start-menu" | "store" | "icons" | "done";
   done: number;
   total: number;
   cached?: number;

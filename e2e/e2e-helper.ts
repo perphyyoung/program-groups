@@ -47,7 +47,12 @@ export interface LaunchedApp {
 export async function launchApp(appData: string, scanDir: string): Promise<LaunchedApp> {
   const app = await electron.launch({
     args: ["."],
-    env: e2eEnv({ E2E: "1", PG_DATA_DIR: appData, PG_SCAN_DIRS: scanDir }),
+    env: e2eEnv({
+      E2E: "1",
+      PG_DATA_DIR: appData,
+      PG_SCAN_DIRS: scanDir,
+      PG_STORE_JSON: "[]",
+    }),
   });
   const page = await app.firstWindow();
   return { app, page };

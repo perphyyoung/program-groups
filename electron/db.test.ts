@@ -39,11 +39,7 @@ function app(id: string, name: string): DiscoveredApp {
     launchPath: `C:\\Start\\${name}.lnk`,
     launchKind: "lnk",
     exePath: `C:\\Apps\\${name}.exe`,
-    targetPath: `C:\\Apps\\${name}.exe`,
-    arguments: "",
-    iconLocation: null,
-    iconIndex: null,
-    relativePath: `${name}.lnk`,
+    source: "start",
     iconFile: null,
   };
 }
@@ -123,6 +119,34 @@ describe("database", () => {
     const columns = check.prepare("PRAGMA table_info(apps)").all() as unknown as { name: string }[];
     check.close();
     expect(columns.some((column) => column.name === "entry_type")).toBe(true);
+    expect(columns.some((column) => column.name === "source")).toBe(true);
+  });
+
+  it("来源扫描失败不误标 missing", () => {
+    const start = app("a", "看图王");
+    const store: DiscoveredApp = {
+      id: "store:s",
+      name: "计算器",
+      launchPath: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+      launchKind: "aumid",
+      exePath: "",
+      source: "store",
+      iconFile: null,
+    };
+
+    reconcile([start, store], "2026-11-20T00:00:00.000Z", new Set(["start", "store"]));
+    expect(countMissing()).toBe(0);
+
+    reconcile([start], "2026-11-20T01:00:00.000Z", new Set(["start"]));
+    expect(countMissing()).toBe(0);
+    expect(
+      listActiveApps()
+        .map((item) => item.id)
+        .toSorted(),
+    ).toEqual(["a", "store:s"]);
+
+    reconcile([start], "2026-11-20T02:00:00.000Z", new Set(["start", "store"]));
+    expect(countMissing()).toBe(1);
   });
 
   it("分组与多对多归属；删组不删应用", () => {

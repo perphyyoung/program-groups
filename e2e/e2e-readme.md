@@ -97,4 +97,5 @@
 - 用例内追加快捷方式用 `createShortcut(slot.scanDir, ...)`，再点「刷新」即可，不需要重启
 - 用例标题与结果由 fixtures 自动写入 `pg.log`（`▶` / `✓ 通过` / `✗`）
 - 共用函数在 `e2e-helper.ts`（`e2eEnv` / `makeWorkdir` / `createShortcut` / `launchApp`），日志在 `e2e-logger.ts`
+- e2e 固定注入 `PG_STORE_JSON=[]`，不扫描本机真实 Store，避免环境差异；Store 解析由单测覆盖
 - 用例覆盖范围变化后，同步更新本文件对应章节

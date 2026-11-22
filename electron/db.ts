@@ -3,17 +3,17 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
+  AppLaunchKind,
   AppRecord,
+  AppSource,
   EntryType,
   GroupSortDirection,
   GroupSortMode,
   ScanSummary,
+  ScannedApp,
 } from "../src/lib/types";
-import type { ShortcutCandidate } from "../src/lib/scan-rules";
 
-export interface DiscoveredApp extends ShortcutCandidate {
-  iconFile: string | null;
-}
+export type DiscoveredApp = ScannedApp;
 
 export interface GroupRow {
   id: string;
@@ -31,9 +31,10 @@ interface AppDbRow {
   id: string;
   name: string;
   launch_path: string;
-  launch_kind: "lnk" | "exe";
+  launch_kind: AppLaunchKind;
   exe_path: string;
   icon_file: string | null;
+  source: AppSource;
   status: "active" | "missing";
   entry_type: EntryType;
   first_seen_at: string;
@@ -65,6 +66,7 @@ CREATE TABLE IF NOT EXISTS apps (
   launch_kind      TEXT NOT NULL,
   exe_path         TEXT NOT NULL,
   icon_file        TEXT,
+  source           TEXT NOT NULL DEFAULT 'start',
   status           TEXT NOT NULL DEFAULT 'active',
   entry_type       TEXT NOT NULL DEFAULT 'app',
   first_seen_at    TEXT NOT NULL,
@@ -121,6 +123,9 @@ export function openDatabase(dbPath: string): DatabaseSync {
   if (!columns.some((column) => column.name === "entry_type")) {
     db.exec("ALTER TABLE apps ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'app'");
   }
+  if (!columns.some((column) => column.name === "source")) {
+    db.exec("ALTER TABLE apps ADD COLUMN source TEXT NOT NULL DEFAULT 'start'");
+  }
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('schema_version', '1') ON CONFLICT(key) DO NOTHING",
   ).run();
@@ -141,6 +146,7 @@ function toApp(row: AppDbRow): AppRecord {
     launchKind: row.launch_kind,
     exePath: row.exe_path,
     iconFile: row.icon_file,
+    source: row.source,
     status: row.status,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
@@ -316,7 +322,8 @@ function hasAppChanged(current: AppDbRow | undefined, app: DiscoveredApp): boole
     current.name !== app.name ||
     current.launch_path !== app.launchPath ||
     current.launch_kind !== app.launchKind ||
-    current.exe_path !== app.exePath
+    current.exe_path !== app.exePath ||
+    current.source !== app.source
   ) {
     return true;
   }
@@ -327,6 +334,7 @@ function hasAppChanged(current: AppDbRow | undefined, app: DiscoveredApp): boole
 export function reconcile(
   discovered: DiscoveredApp[],
   scanStartedAt: string,
+  scannedSources: ReadonlySet<AppSource> = new Set<AppSource>(["start"]),
 ): Pick<ScanSummary, "added" | "updated" | "missing" | "changed"> {
   const database = requireDb();
   const existing = new Map(
@@ -338,15 +346,16 @@ export function reconcile(
 
   const upsert = database.prepare(`
     INSERT INTO apps (
-      id, name, launch_path, launch_kind, exe_path, icon_file,
+      id, name, launch_path, launch_kind, exe_path, icon_file, source,
       status, first_seen_at, last_seen_at
-    ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       launch_path = excluded.launch_path,
       launch_kind = excluded.launch_kind,
       exe_path = excluded.exe_path,
       icon_file = COALESCE(excluded.icon_file, apps.icon_file),
+      source = excluded.source,
       status = 'active',
       entry_type = 'app',
       last_seen_at = excluded.last_seen_at
@@ -371,15 +380,23 @@ export function reconcile(
         app.launchKind,
         app.exePath,
         app.iconFile,
+        app.source,
         scanStartedAt,
         scanStartedAt,
       );
     }
-    const missingResult = database
-      .prepare("UPDATE apps SET status = 'missing' WHERE status = 'active' AND last_seen_at < ?")
-      .run(scanStartedAt);
-    const missing = Number(missingResult.changes);
-    if (missing > 0) changed = true;
+    let missing = 0;
+    if (scannedSources.size > 0) {
+      const sources = Array.from(scannedSources);
+      const placeholders = sources.map(() => "?").join(", ");
+      const missingResult = database
+        .prepare(
+          `UPDATE apps SET status = 'missing' WHERE status = 'active' AND last_seen_at < ? AND source IN (${placeholders})`,
+        )
+        .run(scanStartedAt, ...sources);
+      missing = Number(missingResult.changes);
+      if (missing > 0) changed = true;
+    }
     database.exec("COMMIT");
     return {
       added,

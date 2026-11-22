@@ -12,6 +12,9 @@ const label = computed(() => {
   if (progress.phase === "start-menu") {
     return `扫描开始菜单 ${progress.done}/${progress.total}`;
   }
+  if (progress.phase === "store") {
+    return "扫描 Store 应用";
+  }
   if (progress.phase === "icons") {
     return `检查图标 ${progress.done}/${progress.total} · 缓存 ${progress.cached ?? 0} · 提取 ${progress.extracted ?? 0}`;
   }

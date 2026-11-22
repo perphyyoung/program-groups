@@ -4,6 +4,7 @@ import type { RowContextRequest } from "../lib/row-menu";
 import type { IgnoredItem } from "../lib/types";
 import { useNoteEditor } from "../lib/use-note-editor";
 import RowLayout from "./RowLayout.vue";
+import SourceBadge from "./SourceBadge.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -52,7 +53,12 @@ function firstChar(name: string): string {
       <span class="text-xs font-semibold text-slate-300">{{ firstChar(item.name) }}</span>
     </template>
 
-    <template #name>{{ item.name || "（无名称）" }}</template>
+    <template #name>
+      <span class="flex min-w-0 items-center gap-1.5">
+        <span class="truncate">{{ item.name || "（无名称）" }}</span>
+        <SourceBadge source="start" />
+      </span>
+    </template>
 
     <template #context>
       <form

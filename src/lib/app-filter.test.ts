@@ -10,6 +10,7 @@ function app(id: string, name: string, groupIds: string[] = []): AppEntry {
     launchKind: "lnk",
     exePath: `C:\\Apps\\${name}.exe`,
     iconFile: null,
+    source: "start",
     status: "active",
     firstSeenAt: "2026-11-20T00:00:00.000Z",
     lastSeenAt: "2026-11-20T00:00:00.000Z",
