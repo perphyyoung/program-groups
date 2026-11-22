@@ -56,6 +56,7 @@ import {
 } from "./scan";
 import { scanStoreApps } from "./store-scan";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
+import { iconFileForId } from "../src/lib/icon-files";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
@@ -98,7 +99,7 @@ function iconUrl(appId: string, iconFile: string | null): string | null {
   if (!iconFile) return null;
   try {
     const version = Math.trunc(statSync(join(dataRoot(), iconFile)).mtimeMs);
-    return `pg-icon://${appId}?v=${version}`;
+    return `pg-icon://icon/${encodeURIComponent(appId)}?v=${version}`;
   } catch (error) {
     log.warn(
       `[icon] 读取失败 ${iconFile}: ${error instanceof Error ? error.message : String(error)}`,
@@ -686,9 +687,9 @@ app.whenReady().then(() => {
       `data=${dataRoot()} db=${databasePath()} log=${logPath}`,
   );
   protocol.handle("pg-icon", async (request) => {
-    const id = new URL(request.url).hostname;
-    if (!/^[a-f0-9]{16}$/u.test(id)) return new Response("Not found", { status: 404 });
-    const filePath = join(dataRoot(), "icons", `${id}.png`);
+    const id = decodeURIComponent(new URL(request.url).pathname.replace(/^\//u, ""));
+    if (!id || id.includes("/")) return new Response("Not found", { status: 404 });
+    const filePath = join(dataRoot(), iconFileForId(id));
     if (!existsSync(filePath)) return new Response("Not found", { status: 404 });
     try {
       const response = await net.fetch(pathToFileURL(filePath).toString());

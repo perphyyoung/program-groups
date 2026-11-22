@@ -10,6 +10,7 @@ import {
   pickBestShortcuts,
   type ShortcutCandidate,
 } from "../src/lib/scan-rules";
+import { iconFileForId, iconMissFileForId } from "../src/lib/icon-files";
 import type { IgnoredItem, ScanProgress } from "../src/lib/types";
 import { log } from "./logger";
 
@@ -231,7 +232,7 @@ export function resolveCachedIcons(
   const icons = new Map<string, string>();
   let cached = 0;
   for (const candidate of candidates) {
-    const iconFile = `icons/${candidate.id}.png`;
+    const iconFile = iconFileForId(candidate.id);
     if (existsSync(join(dataDir, iconFile))) {
       icons.set(candidate.id, iconFile);
       cached += 1;
@@ -263,8 +264,9 @@ export async function extractIcons(
       next += 1;
       if (index >= candidates.length) return;
       const candidate = candidates[index]!;
-      const iconPath = join(iconsDir, `${candidate.id}.png`);
-      const missPath = join(iconsDir, `${candidate.id}.miss`);
+      const iconFile = iconFileForId(candidate.id);
+      const iconPath = join(dataDir, iconFile);
+      const missPath = join(dataDir, iconMissFileForId(candidate.id));
       try {
         const isStore = "sourcePath" in candidate;
         let sourceMtime: number;
@@ -291,13 +293,13 @@ export async function extractIcons(
 
         if (!force && iconIsFresh) {
           cached += 1;
-          icons.set(candidate.id, `icons/${candidate.id}.png`);
+          icons.set(candidate.id, iconFile);
         } else {
           const missIsFresh =
             !force && existsSync(missPath) && readFileSync(missPath, "utf8") === sourceKey;
           if (missIsFresh) {
             failed += 1;
-            if (existsSync(iconPath)) icons.set(candidate.id, `icons/${candidate.id}.png`);
+            if (existsSync(iconPath)) icons.set(candidate.id, iconFile);
           } else {
             let image: NativeImage;
             if (isStore) {
@@ -309,7 +311,7 @@ export async function extractIcons(
             if (!image.isEmpty()) {
               // eslint-disable-next-line no-await-in-loop -- 同上，写完再处理下一个
               await writeFile(iconPath, image.toPNG());
-              icons.set(candidate.id, `icons/${candidate.id}.png`);
+              icons.set(candidate.id, iconFile);
               extracted += 1;
             } else {
               // eslint-disable-next-line no-await-in-loop -- 失败标记也按顺序写

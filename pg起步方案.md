@@ -173,10 +173,11 @@ WHERE a.status = 'active'
 - 提取只在设置页手动触发：默认增量，只补缺失和源文件已变化的图标；勾选「全量重建」时忽略缓存重新提取。失败保留旧图标。
 - 设置页「图标来源」控制提取范围：`start` / `store` / `green`；默认只勾 `start`，选择写入 `meta.icon_sources`。`green` 暂无扫描实现，置灰。
 - Store 图标不解析 AUMID：读 `Get-AppxPackageManifest` 的 `Square44x44Logo`，目录用 `[IO.Path]::GetDirectoryName`；按限定词 token 解析，不依赖顺序，排除 `contrast-*`。优先级：targetsize 48/44/32/256，同尺寸优先 `altform-unplated`；无 targetsize 用 scale-200；基名最后；再回退同目录 `AppList.*`。
-- 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/<appId>.png`。
-- 图标通过 `pg-icon://<appId>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
+- 主进程用 `app.getFileIcon(source, { size: 'large' })` 取图标；Windows 下 `large` 只有 32×32。`toPNG()` 存到 `<data>/icons/start_<id>.png` 或 `store_<hash>.png`。
+- 图标通过 `pg-icon://icon/<encodeURIComponent(appId)>?v=<mtime>` 自定义协议加载，不再走 IPC base64；响应带长缓存，图标文件变化时 URL 版本变化。
+- 缓存文件名去掉 Windows 非法字符并带来源前缀：start 存为 `icons/start_<id>.png`，Store `store:<hash>` 存为 `icons/store_<hash>.png`，不能直接当文件名（NTFS 会变成 ADS）。
 - 缓存按目标 exe、IconLocation、快捷方式 `.lnk` 的 mtime 判断；命中时只 stat，不调用 `getFileIcon`。
-- 提取失败写 `icons/<appId>.miss`，源文件不变时不重试；成功后正常写 PNG。
+- 提取失败写同名 `.miss`，源文件不变时不重试；成功后正常写 PNG。
 - 并发 8；设置页显示「已处理 N/M · 新增 X · 复用 Y · 失败 Z」。
 - 不在 SQLite 里存 BLOB。
 
