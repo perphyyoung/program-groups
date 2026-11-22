@@ -34,12 +34,14 @@ import {
   renameGroup,
   reorderGroups,
   restoreManualApp,
+  setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
   setNote,
 } from "./db";
 import { log, logPath } from "./logger";
 import { extractIcons, scanStartMenu, startMenuRoots } from "./scan";
+import { entryTypesForIgnored } from "../src/lib/entry-types";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
 import type {
   AppEntry,
@@ -183,6 +185,10 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       iconFile: iconResult.icons.get(candidate.id) ?? null,
     }));
     const reconciled = reconcile(discovered, scanStartedAt);
+    const discoveredIds = new Set(discovered.map((item) => item.id));
+    const entryTypeChanges = setEntryTypes(
+      entryTypesForIgnored(result.ignoredItems, discoveredIds),
+    );
     const summary: ScanSummary = {
       scanned: result.scanned,
       kept: discovered.length,
@@ -191,13 +197,13 @@ async function runScan(sender: WebContents): Promise<ScanSummary> {
       duplicate: result.duplicate,
       duplicateItems: result.duplicateItems,
       ...reconciled,
-      changed: reconciled.changed || iconResult.extracted > 0,
+      changed: reconciled.changed || iconResult.extracted > 0 || entryTypeChanges > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
     log.info(
       `[scan] scanned=${summary.scanned} kept=${summary.kept} ignored=${summary.ignored} ` +
         `duplicate=${summary.duplicate} icons=${iconResult.extracted}/${iconResult.cached} ` +
-        `added=${summary.added} missing=${summary.missing}`,
+        `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
     );
     return summary;
   } finally {

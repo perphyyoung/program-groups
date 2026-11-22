@@ -2,7 +2,13 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { AppRecord, GroupSortDirection, GroupSortMode, ScanSummary } from "../src/lib/types";
+import type {
+  AppRecord,
+  EntryType,
+  GroupSortDirection,
+  GroupSortMode,
+  ScanSummary,
+} from "../src/lib/types";
 import type { ShortcutCandidate } from "../src/lib/scan-rules";
 
 export interface DiscoveredApp extends ShortcutCandidate {
@@ -29,6 +35,7 @@ interface AppDbRow {
   exe_path: string;
   icon_file: string | null;
   status: "active" | "missing";
+  entry_type: EntryType;
   first_seen_at: string;
   last_seen_at: string;
 }
@@ -59,6 +66,7 @@ CREATE TABLE IF NOT EXISTS apps (
   exe_path         TEXT NOT NULL,
   icon_file        TEXT,
   status           TEXT NOT NULL DEFAULT 'active',
+  entry_type       TEXT NOT NULL DEFAULT 'app',
   first_seen_at    TEXT NOT NULL,
   last_seen_at     TEXT NOT NULL
 );
@@ -109,6 +117,10 @@ export function openDatabase(dbPath: string): DatabaseSync {
   db.exec("PRAGMA synchronous = NORMAL");
   db.exec("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
+  const columns = db.prepare("PRAGMA table_info(apps)").all() as unknown as { name: string }[];
+  if (!columns.some((column) => column.name === "entry_type")) {
+    db.exec("ALTER TABLE apps ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'app'");
+  }
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('schema_version', '1') ON CONFLICT(key) DO NOTHING",
   ).run();
@@ -146,7 +158,9 @@ function toGroup(row: GroupDbRow): GroupRow {
 
 export function listActiveApps(): AppRecord[] {
   const rows = requireDb()
-    .prepare("SELECT * FROM apps WHERE status = 'active' ORDER BY name COLLATE NOCASE")
+    .prepare(
+      "SELECT * FROM apps WHERE status = 'active' AND entry_type = 'app' ORDER BY name COLLATE NOCASE",
+    )
     .all() as unknown as AppDbRow[];
   return rows.map(toApp);
 }
@@ -221,9 +235,30 @@ export function listMemberships(): MembershipRow[] {
 
 export function countMissing(): number {
   const row = requireDb()
-    .prepare("SELECT COUNT(*) AS count FROM apps WHERE status = 'missing'")
+    .prepare("SELECT COUNT(*) AS count FROM apps WHERE status = 'missing' AND entry_type = 'app'")
     .get() as unknown as { count: number };
   return row.count;
+}
+
+/** 写入扫描规则判定的入口类型；只更新已存在行，不新增应用 */
+export function setEntryTypes(entries: { id: string; type: EntryType }[]): number {
+  if (entries.length === 0) return 0;
+  const database = requireDb();
+  const update = database.prepare(
+    "UPDATE apps SET entry_type = ? WHERE id = ? AND entry_type <> ?",
+  );
+  let changed = 0;
+  database.exec("BEGIN");
+  try {
+    for (const entry of entries) {
+      changed += Number(update.run(entry.type, entry.id, entry.type).changes);
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return changed;
 }
 
 export function listManualIgnoredIds(): Set<string> {
@@ -276,7 +311,7 @@ export function markAppMissing(id: string): void {
 }
 
 function hasAppChanged(current: AppDbRow | undefined, app: DiscoveredApp): boolean {
-  if (!current || current.status !== "active") return true;
+  if (!current || current.status !== "active" || current.entry_type !== "app") return true;
   if (
     current.name !== app.name ||
     current.launch_path !== app.launchPath ||
@@ -313,6 +348,7 @@ export function reconcile(
       exe_path = excluded.exe_path,
       icon_file = COALESCE(excluded.icon_file, apps.icon_file),
       status = 'active',
+      entry_type = 'app',
       last_seen_at = excluded.last_seen_at
   `);
 

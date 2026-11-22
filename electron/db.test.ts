@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addMembers,
@@ -22,6 +23,7 @@ import {
   renameGroup,
   reorderGroups,
   restoreManualApp,
+  setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
   setNote,
@@ -69,6 +71,58 @@ describe("database", () => {
 
     const third = reconcile([app("a", "看图王")], "2026-11-20T02:00:00.000Z");
     expect(third.changed).toBe(false);
+  });
+
+  it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {
+    reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T00:00:00.000Z");
+    expect(setEntryTypes([{ id: "a", type: "uninstaller" }])).toBe(1);
+    expect(setEntryTypes([{ id: "a", type: "uninstaller" }])).toBe(0);
+    expect(
+      listActiveApps()
+        .map((item) => item.id)
+        .toSorted(),
+    ).toEqual(["b"]);
+    expect(countMissing()).toBe(0);
+
+    const second = reconcile([app("b", "VLC")], "2026-11-20T01:00:00.000Z");
+    expect(second.missing).toBe(1);
+    expect(countMissing()).toBe(0);
+
+    const third = reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T02:00:00.000Z");
+    expect(third.changed).toBe(true);
+    expect(
+      listActiveApps()
+        .map((item) => item.id)
+        .toSorted(),
+    ).toEqual(["a", "b"]);
+    expect(countMissing()).toBe(0);
+  });
+
+  it("旧库自动补 entry_type 列", () => {
+    closeDatabase();
+    const path = join(dir, "old.db");
+    const old = new DatabaseSync(path);
+    old.exec(`
+      CREATE TABLE apps (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        launch_path TEXT NOT NULL,
+        launch_kind TEXT NOT NULL,
+        exe_path TEXT NOT NULL,
+        icon_file TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      )
+    `);
+    old.close();
+
+    openDatabase(path);
+    closeDatabase();
+    const check = new DatabaseSync(path);
+    const columns = check.prepare("PRAGMA table_info(apps)").all() as unknown as { name: string }[];
+    check.close();
+    expect(columns.some((column) => column.name === "entry_type")).toBe(true);
   });
 
   it("分组与多对多归属；删组不删应用", () => {

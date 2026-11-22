@@ -1,4 +1,5 @@
 export type AppStatus = "active" | "missing";
+export type EntryType = "app" | "uninstaller" | "installer" | "system";
 
 export interface AppRecord {
   id: string;

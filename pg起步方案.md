@@ -88,6 +88,7 @@ CREATE TABLE apps (
   exe_path         TEXT NOT NULL,              -- 规范化后的真实 exe 路径，用于去重
   icon_file        TEXT,                       -- 相对数据目录的 icons/xxx.png
   status           TEXT NOT NULL DEFAULT 'active', -- 'active' | 'missing'
+  entry_type       TEXT NOT NULL DEFAULT 'app',    -- 'app' | 'uninstaller' | 'installer' | 'system'
   first_seen_at    TEXT NOT NULL,
   last_seen_at     TEXT NOT NULL
 );
@@ -217,14 +218,16 @@ MVP 只扫描开始菜单，因此：
 - 删除分组：原生确认弹窗，标题「删除分组「X」？」，正文显示组内应用数与归属后果；取消默认聚焦，按钮取消在左、删除分组在右，等宽平分。
 - 分组默认手动排序；分组区标题右侧可切换 手动排序 / 名称排序 / 创建顺序，并用 ↑/↓ 箭头切换正序 / 倒序。手动顺序写入 `groups.sort`，排序方式写入 `meta.group_sort_mode`，方向写入 `meta.group_sort_direction`；名称 / 创建顺序只改变展示，不覆盖手动顺序。
 - 手动排序下从分组行首握把拖拽排序，或聚焦握把后 `Alt+↑/↓` 移动；拖动中只显示 2px 插入线，其它行不位移。倒序拖拽按可见顺序操作，提交时反写为手动升序。
+- 扫描时对忽略项中的卸载器 / 安装器 / 系统工具写 `entry_type`；只更新已存在的 app 行，不新增应用。`missing-target` / `unreadable` / `invalid-target` 不改类型，真实应用损坏仍按缺失处理。
 - MVP 分组顺序中手动顺序可调整；不做跨侧栏排序。
 
 ### 5.4 计数口径
 
-- 「全部应用」= `status = 'active'` 的应用数。
-- 分组计数 = 该组内 `active` 应用数。
-- 「未分组」= `active` 且没有任何归属。
-- `missing` 应用不计入以上任何计数，但保留关系；界面底部单独提示「N 个应用缺失，分组关系已保留」。
+- 「全部应用」= `status = 'active'` 且 `entry_type = 'app'` 的应用数。
+- 分组计数 = 该组内 `active` 且 `entry_type = 'app'` 的应用数。
+- 「未分组」= `active` 且 `entry_type = 'app'` 且没有任何归属。
+- `missing` 且 `entry_type = 'app'` 的应用不计入以上任何计数，但保留关系；界面底部单独提示缺失数。
+- 卸载器 / 安装器 / 系统工具只保留 `entry_type` 标记，不计入应用、未分组或缺失；分组与备注保留，恢复为有效应用时自动回到列表。
 
 ## 6. 启动与搜索（下游）
 
@@ -365,7 +368,7 @@ MVP 只扫描开始菜单，因此：
 - 搜索「图」只显示名称/exe 名匹配的应用；清空恢复完整列表。
 - 点行尾「启动」能启动；启动路径失效时提示并标记缺失。
 - 行右键菜单固定「启动 / 打开目标路径 / 打开链接路径」，缺失项置灰；备注输入框内保留系统右键菜单。
-- 删除开始菜单快捷方式后刷新：应用从列表消失、底部显示缺失数；重新放回后刷新，应用回到原分组。
+- 删除开始菜单快捷方式后刷新：真实应用从列表消失、底部显示缺失数；卸载器 / 安装器 / 系统工具不计入缺失；重新放回后刷新，应用回到原分组。
 - 开始菜单里没有快捷方式的已安装应用不会出现（MVP 已知限制，后续用注册表扫描与手动添加兜底）。
 - `pnpm check`（format / lint / type-check / test / build）全绿；`pnpm e2e` 通过。
 
