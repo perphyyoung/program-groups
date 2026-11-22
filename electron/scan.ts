@@ -33,8 +33,8 @@ export function startMenuRoots(): string[] {
   const appData = process.env["APPDATA"];
   const programData = process.env["ProgramData"];
   return [
-    appData ? join(appData, "Microsoft", "Windows", "Start Menu", "Programs") : "",
-    programData ? join(programData, "Microsoft", "Windows", "Start Menu", "Programs") : "",
+    appData ? join(appData, "Microsoft", "Windows", "Start Menu") : "",
+    programData ? join(programData, "Microsoft", "Windows", "Start Menu") : "",
   ].filter(Boolean);
 }
 
