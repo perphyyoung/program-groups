@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test": "vitest run",
+    "test": "vitest run --reporter=dot",
     "test:watch": "vitest",
     "e2e": "pnpm build && playwright test",
     "type-check": "vue-tsc --noEmit",
