@@ -203,6 +203,7 @@ WHERE a.status = 'active'
 - 未分组栏标题下方提供来源筛选 `全部 / start / store / green`，至少两个来源有应用时显示；计数不随搜索变化，切栏重置为全部。
 - 侧栏固定显示「全部应用」「未分组 N」「已忽略 N」，其下是用户分组。
 - 「已忽略」与「未分组」平级，不参与归组；只展示最近一次扫描被规则过滤的项与原因，不计入未分组数量。
+- 缺失应用栏与「已忽略」平级：列出 `status = missing` 的应用名称、来源与 exe 路径；标题下方按来源筛选（规则同未分组栏）；支持逐个删除或勾选后批量删除，确认后硬删数据库记录与归属、备注，不删除磁盘文件。
 - 「已忽略」按原因折叠分组，组头显示数量；默认折叠，搜索时命中组自动展开。
 - 折叠组头吸顶，展开后向下滚动仍可随时收起；滚动容器设置 `scroll-padding-top`，聚焦行不被遮挡。
 - 重复快捷方式不进入侧栏计数，但作为独立分组「重复快捷方式」排在最后，标注已收录为哪个应用；每行可「启动」，或用行菜单「打开链接路径」定位 `.lnk`，由用户自行决定是否删除。
@@ -295,6 +296,7 @@ WHERE a.status = 'active'
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary`（只读图标缓存，不返回图标状态） |
 | `library:scanGreen` | — | `ScanSummary`，只扫绿色软件目录，不动 start / store |
+| `missing:delete` | `ids` | `number`，只删 `status = 'missing'` 的应用；级联归属并清理备注 |
 | `icons:settings` | — | `{ sources: IconSource[]; stats: Record<IconSource, { cached; total }> }`，默认仅 `start` |
 | `icons:setSources` | `sources` | `void`，写入 `meta.icon_sources` |
 | `icons:update` | `{ force, sources }` | `{ extracted, cached, failed, force }`，按来源增量提取；`force` 全量重建 |

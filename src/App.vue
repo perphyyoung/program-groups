@@ -7,12 +7,13 @@ import FilterChip from "./components/FilterChip.vue";
 import GroupDialog from "./components/GroupDialog.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
+import MissingAppRow from "./components/MissingAppRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import RowContextMenu from "./components/RowContextMenu.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import SettingsPage from "./components/SettingsPage.vue";
-import { filterApps, type SourceFilter } from "./lib/app-filter";
+import { filterApps, matchesSearch, type SourceFilter } from "./lib/app-filter";
 import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
@@ -41,11 +42,16 @@ import type {
 
 type DialogState = { kind: "create" } | { kind: "rename"; group: GroupEntry };
 
-type ConfirmState = { kind: "green"; entry: GreenDirEntry } | { kind: "group"; group: GroupEntry };
+type ConfirmState =
+  | { kind: "green"; entry: GreenDirEntry }
+  | { kind: "group"; group: GroupEntry }
+  | { kind: "missing"; ids: string[]; name?: string };
 
 const apps = ref<AppEntry[]>([]);
 const groups = ref<GroupEntry[]>([]);
-const missingCount = ref(0);
+const missingApps = ref<AppEntry[]>([]);
+const missingSelected = ref<Set<string>>(new Set());
+const missingCount = computed(() => missingApps.value.length);
 const ignoredItems = ref<IgnoredItem[]>([]);
 const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
@@ -53,6 +59,7 @@ const manualIgnored = ref<AppEntry[]>([]);
 const manualOpen = ref(false);
 const scope = ref<AppScope>({ kind: "ungrouped" });
 const sourceFilter = ref<SourceFilter>("all");
+const missingSourceFilter = ref<SourceFilter>("all");
 const includeIgnored = ref(false);
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -74,6 +81,10 @@ const confirmTitle = computed(() => {
   const state = confirmState.value;
   if (!state) return "";
   if (state.kind === "green") return "移除绿色软件目录？";
+  if (state.kind === "missing") {
+    if (state.ids.length === 1 && state.name) return `删除缺失应用「${state.name}」？`;
+    return `删除 ${state.ids.length} 个缺失应用？`;
+  }
   return `删除分组「${state.group.name}」？`;
 });
 const confirmDescription = computed(() => {
@@ -82,15 +93,21 @@ const confirmDescription = computed(() => {
   if (state.kind === "green") {
     return `移除「${state.entry.dir}」？该目录下 ${state.entry.count} 个应用将被删除，分组归属与备注一并清除。`;
   }
+  if (state.kind === "missing") {
+    return `将从数据库删除 ${state.ids.length} 个缺失记录，分组归属与备注一并清除；不会删除磁盘文件。`;
+  }
   const count = state.group.count;
   if (count > 0) {
     return `组内 ${count} 个应用会失去这个分组；只属于它的应用会回到未分组。应用不会被卸载，其他分组不受影响。`;
   }
   return "这个分组还没有应用，删除后不可恢复。";
 });
-const confirmLabel = computed(() =>
-  confirmState.value?.kind === "group" ? "删除分组" : "移除目录",
-);
+const confirmLabel = computed(() => {
+  const kind = confirmState.value?.kind;
+  if (kind === "group") return "删除分组";
+  if (kind === "missing") return "删除";
+  return "移除目录";
+});
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
@@ -124,22 +141,58 @@ const sourceCounts = computed(() => {
 const visibleSources = computed(() =>
   (["start", "store", "green"] as AppSource[]).filter((source) => sourceCounts.value[source] > 0),
 );
+const missingSourceCounts = computed(() => {
+  const counts: Record<AppSource, number> = { start: 0, store: 0, green: 0 };
+  for (const app of missingApps.value) counts[app.source] += 1;
+  return counts;
+});
+const visibleMissingSources = computed(() =>
+  (["start", "store", "green"] as AppSource[]).filter(
+    (source) => missingSourceCounts.value[source] > 0,
+  ),
+);
 const showSourceFilter = computed(
-  () => scope.value.kind === "ungrouped" && visibleSources.value.length >= 2,
+  () =>
+    (scope.value.kind === "ungrouped" && visibleSources.value.length >= 2) ||
+    (scope.value.kind === "missing" && visibleMissingSources.value.length >= 2),
 );
 watch(sourceCounts, (counts) => {
   if (sourceFilter.value !== "all" && counts[sourceFilter.value] === 0) {
     sourceFilter.value = "all";
   }
 });
-const sourceOptions = computed(() => [
-  { value: "all" as const, label: "全部", count: ungroupedCount.value },
-  ...visibleSources.value.map((source) => ({
-    value: source,
-    label: source,
-    count: sourceCounts.value[source],
-  })),
-]);
+watch(missingSourceCounts, (counts) => {
+  if (missingSourceFilter.value !== "all" && counts[missingSourceFilter.value] === 0) {
+    missingSourceFilter.value = "all";
+  }
+});
+const sourceOptions = computed(() => {
+  if (scope.value.kind === "missing") {
+    return [
+      { value: "all" as const, label: "全部", count: missingApps.value.length },
+      ...visibleMissingSources.value.map((source) => ({
+        value: source,
+        label: source,
+        count: missingSourceCounts.value[source],
+      })),
+    ];
+  }
+  return [
+    { value: "all" as const, label: "全部", count: ungroupedCount.value },
+    ...visibleSources.value.map((source) => ({
+      value: source,
+      label: source,
+      count: sourceCounts.value[source],
+    })),
+  ];
+});
+const activeSourceFilter = computed<SourceFilter>({
+  get: () => (scope.value.kind === "missing" ? missingSourceFilter.value : sourceFilter.value),
+  set: (value) => {
+    if (scope.value.kind === "missing") missingSourceFilter.value = value;
+    else sourceFilter.value = value;
+  },
+});
 const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
@@ -156,6 +209,26 @@ const filteredApps = computed(() =>
     (app) => appNote(app.id),
     scope.value.kind === "ungrouped" ? sourceFilter.value : "all",
   ),
+);
+
+const filteredMissing = computed(() =>
+  missingApps.value
+    .filter(
+      (app) =>
+        (missingSourceFilter.value === "all" || app.source === missingSourceFilter.value) &&
+        matchesSearch(app, search.value, (item) => appNote(item.id)),
+    )
+    .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN")),
+);
+const missingAllSelected = computed(
+  () =>
+    filteredMissing.value.length > 0 &&
+    filteredMissing.value.every((app) => missingSelected.value.has(app.id)),
+);
+const missingSomeSelected = computed(
+  () =>
+    !missingAllSelected.value &&
+    filteredMissing.value.some((app) => missingSelected.value.has(app.id)),
 );
 
 const ignoredGroups = computed(() =>
@@ -196,6 +269,7 @@ const currentTitle = computed(() => {
   if (current.kind === "all") return "全部应用";
   if (current.kind === "ungrouped") return "未分组";
   if (current.kind === "ignored") return "已忽略";
+  if (current.kind === "missing") return "缺失应用";
   if (current.kind === "settings") return "设置";
   return groups.value.find((group) => group.id === current.groupId)?.name ?? "分组";
 });
@@ -208,6 +282,9 @@ const emptyText = computed(() => {
   }
   if (scope.value.kind === "ungrouped") return "所有应用都已归类";
   if (scope.value.kind === "ignored") return "没有被忽略的应用";
+  if (scope.value.kind === "missing") {
+    return missingApps.value.length > 0 ? "没有匹配的应用" : "没有缺失应用";
+  }
   if (scope.value.kind === "group") return "这个分组还没有应用，把应用拖进来";
   return "没有找到可启动的应用，点击刷新重试";
 });
@@ -407,7 +484,9 @@ function reasonLabel(reason: IgnoreReason): string {
 function selectScope(next: AppScope): void {
   scope.value = next;
   sourceFilter.value = "all";
+  missingSourceFilter.value = "all";
   clearSelection();
+  clearMissingSelection();
   if (next.kind === "settings") void loadIconSettings();
 }
 
@@ -425,7 +504,11 @@ async function load(): Promise<void> {
   groupSortMode.value = data.groupSortMode;
   groupSortDirection.value = data.groupSortDirection;
   groups.value = data.groups;
-  missingCount.value = data.missingCount;
+  missingApps.value = data.missing;
+  const missingIds = new Set(data.missing.map((item) => item.id));
+  missingSelected.value = new Set(
+    Array.from(missingSelected.value).filter((id) => missingIds.has(id)),
+  );
   ensureTargetGroup();
 }
 
@@ -601,6 +684,12 @@ async function confirmAction(): Promise<void> {
       await load();
       await loadIconSettings();
       showToast(`已移除绿色软件目录，删除 ${result.deleted} 个应用`, "info");
+    } else if (current.kind === "missing") {
+      /* ids 来自 ref 深层代理，IPC 结构化克隆会失败，传纯数组副本 */
+      const deleted = await window.api.deleteMissingApps([...current.ids]);
+      missingSelected.value = new Set();
+      await load();
+      showToast(`已删除 ${deleted} 个缺失应用`, "info");
     } else {
       await window.api.deleteGroup(current.group.id);
       if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
@@ -668,6 +757,29 @@ function onIconProgress(progress: IconUpdateProgress): void {
 function clearSelection(): void {
   selected.value = new Set();
   lastSelectedIndex.value = null;
+}
+
+function clearMissingSelection(): void {
+  missingSelected.value = new Set();
+}
+
+function toggleMissing(app: AppEntry): void {
+  const next = new Set(missingSelected.value);
+  if (next.has(app.id)) next.delete(app.id);
+  else next.add(app.id);
+  missingSelected.value = next;
+}
+
+function toggleMissingAll(): void {
+  missingSelected.value = missingAllSelected.value
+    ? new Set()
+    : new Set(filteredMissing.value.map((app) => app.id));
+}
+
+function requestDeleteMissingApps(ids: string[], name?: string): void {
+  if (ids.length === 0) return;
+  confirmError.value = null;
+  confirmState.value = { kind: "missing", ids, name };
 }
 
 function onSelect(app: AppEntry, event: MouseEvent): void {
@@ -868,6 +980,7 @@ onBeforeUnmount(() => {
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
         :ignored-count="ignoredCount"
+        :missing-count="missingCount"
         :active="scope"
         :scanning="scanning"
         :dragging="dragIds.length > 0"
@@ -896,8 +1009,8 @@ onBeforeUnmount(() => {
                 :key="option.value"
                 :label="option.label"
                 :count="option.count"
-                :active="sourceFilter === option.value"
-                @select="sourceFilter = option.value"
+                :active="activeSourceFilter === option.value"
+                @select="activeSourceFilter = option.value"
               />
             </div>
             <label
@@ -1016,6 +1129,35 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div v-else-if="scope.kind === 'missing'" class="h-full">
+            <div class="flex items-center gap-3 px-3 pt-5">
+              <label class="flex items-center gap-2 text-xs text-slate-400">
+                <input
+                  type="checkbox"
+                  class="size-4 accent-indigo-500"
+                  :checked="missingAllSelected"
+                  :indeterminate.prop="missingSomeSelected"
+                  :disabled="filteredMissing.length === 0"
+                  aria-label="全选缺失应用"
+                  @change="toggleMissingAll"
+                />
+                共 {{ filteredMissing.length }} 个缺失应用
+              </label>
+            </div>
+
+            <div v-if="filteredMissing.length > 0" class="mt-2 flex flex-col gap-1.5">
+              <MissingAppRow
+                v-for="app in filteredMissing"
+                :key="app.id"
+                :app="app"
+                :selected="missingSelected.has(app.id)"
+                @toggle="toggleMissing(app)"
+                @remove="requestDeleteMissingApps([app.id], app.name)"
+              />
+            </div>
+            <div v-else class="mt-16 text-center text-sm text-slate-500">{{ emptyText }}</div>
+          </div>
+
           <template v-else>
             <div
               v-if="filteredApps.length > 0"
@@ -1098,7 +1240,7 @@ onBeforeUnmount(() => {
         </footer>
 
         <div
-          v-if="selectedCount > 0 && scope.kind !== 'ignored'"
+          v-if="selectedCount > 0 && scope.kind !== 'ignored' && scope.kind !== 'missing'"
           class="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4"
         >
           <div
@@ -1147,6 +1289,29 @@ onBeforeUnmount(() => {
             <button
               class="h-8 rounded-lg px-2 text-xs text-slate-500 transition hover:text-slate-200"
               @click="clearSelection"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-if="scope.kind === 'missing' && missingSelected.size > 0"
+          class="pointer-events-none absolute inset-x-0 bottom-12 z-20 flex justify-center px-4"
+        >
+          <div
+            class="pointer-events-auto flex items-center gap-2 rounded-full border border-white/15 bg-[#151b25] px-4 py-2 text-sm text-slate-200 shadow-2xl"
+          >
+            <span class="text-xs text-slate-400">已选 {{ missingSelected.size }} 项</span>
+            <button
+              class="h-8 rounded-lg bg-rose-500 px-3 text-xs font-medium text-white transition hover:bg-rose-400"
+              @click="requestDeleteMissingApps(Array.from(missingSelected))"
+            >
+              删除所选
+            </button>
+            <button
+              class="h-8 rounded-lg px-2 text-xs text-slate-500 transition hover:text-slate-200"
+              @click="clearMissingSelection"
             >
               取消
             </button>

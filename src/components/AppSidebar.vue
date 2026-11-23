@@ -11,6 +11,7 @@ const props = defineProps<{
   totalCount: number;
   ungroupedCount: number;
   ignoredCount: number;
+  missingCount: number;
   active: AppScope;
   scanning: boolean;
   dragging: boolean;
@@ -368,6 +369,20 @@ function onDrop(event: DragEvent, groupId: string): void {
       >
         <span>已忽略</span>
         <span class="text-xs text-slate-500">{{ ignoredCount }}</span>
+      </button>
+
+      <button
+        aria-label="缺失应用"
+        class="mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition"
+        :class="
+          active.kind === 'missing'
+            ? 'bg-indigo-500/15 text-indigo-200'
+            : 'text-slate-300 hover:bg-white/5'
+        "
+        @click="emit('select', { kind: 'missing' })"
+      >
+        <span>缺失应用</span>
+        <span class="text-xs text-slate-500">{{ missingCount }}</span>
       </button>
 
       <button

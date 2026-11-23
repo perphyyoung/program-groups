@@ -13,6 +13,7 @@ import {
   createGroup,
   deleteGreenAppsUnder,
   deleteGroup,
+  deleteMissingApps,
   getGreenDirs,
   getGroupSortDirection,
   getGroupSortMode,
@@ -20,6 +21,7 @@ import {
   listGroups,
   listManualIgnoredIds,
   listMemberships,
+  listMissingApps,
   listNotes,
   manualIgnoreApp,
   openDatabase,
@@ -137,6 +139,24 @@ describe("database", () => {
     expect(listNotes()["app:g1"]).toBeUndefined();
     expect(listNotes()["app:g2"]).toBe("b");
     expect(listMemberships().filter((item) => item.appId === "g1")).toHaveLength(0);
+  });
+
+  it("缺失应用：列表与删除只处理 missing，活动应用受保护", () => {
+    const first = "2026-11-20T00:00:00.000Z";
+    const second = "2026-11-20T01:00:00.000Z";
+    reconcile([app("a", "看图王"), app("b", "VLC")], first);
+    reconcile([app("a", "看图王")], second);
+    expect(listMissingApps().map((item) => item.id)).toEqual(["b"]);
+
+    setNote("app:b", "旧播放器");
+    const group = createGroup("媒体");
+    addMembers(["b"], group.id);
+
+    expect(deleteMissingApps(["b", "a"])).toBe(1);
+    expect(listActiveApps().map((item) => item.id)).toEqual(["a"]);
+    expect(listMissingApps()).toHaveLength(0);
+    expect(listNotes()["app:b"]).toBeUndefined();
+    expect(listMemberships().filter((item) => item.appId === "b")).toHaveLength(0);
   });
 
   it("entry_type：排除项不计入活动与缺失，有效发现后恢复", () => {

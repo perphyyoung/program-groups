@@ -19,6 +19,7 @@ export interface Api {
   loadGroups(): Promise<GroupsData>;
   scanLibrary(): Promise<ScanSummary>;
   scanGreen(): Promise<ScanSummary>;
+  deleteMissingApps(ids: string[]): Promise<number>;
   iconSettings(): Promise<IconSettings>;
   setIconSources(sources: IconSource[]): Promise<void>;
   updateIcons(options: IconUpdateOptions): Promise<IconUpdateResult>;

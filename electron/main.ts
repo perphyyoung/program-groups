@@ -20,10 +20,10 @@ import {
   closeDatabase,
   countGreenAppsUnder,
   countIconStats,
-  countMissing,
   createGroup,
   deleteGreenAppsUnder,
   deleteGroup,
+  deleteMissingApps,
   getApp,
   getGreenDirs,
   getGroupSortDirection,
@@ -35,6 +35,7 @@ import {
   listGroups,
   listManualIgnoredIds,
   listMemberships,
+  listMissingApps,
   listNotes,
   manualIgnoreApp,
   markAppMissing,
@@ -203,8 +204,8 @@ function loadLibrary(): LibraryData {
   return {
     apps: visible.map((item) => toEntry(item, groupIdsByApp)),
     manualIgnored: hidden.map((item) => toEntry(item, groupIdsByApp)),
+    missing: listMissingApps().map((item) => toEntry(item, new Map())),
     groups,
-    missingCount: countMissing(),
     notes: listNotes(),
     groupSortMode: getGroupSortMode(),
     groupSortDirection: getGroupSortDirection(),
@@ -589,6 +590,14 @@ ipcMain.handle("library:scan", (event) =>
 
 ipcMain.handle("library:scanGreen", (event) =>
   handleIpcAsync("library:scanGreen", () => runScan(event.sender, { sources: ["green"] })),
+);
+
+ipcMain.handle("missing:delete", (_event, ids: unknown) =>
+  handleIpc("missing:delete", () => {
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error("缺失应用 ID 无效");
+    if (ids.some((id) => typeof id !== "string")) throw new Error("缺失应用 ID 无效");
+    return deleteMissingApps(ids);
+  }),
 );
 
 ipcMain.handle("icons:settings", () =>

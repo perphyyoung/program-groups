@@ -21,15 +21,28 @@ export function makeWorkdir(prefix: string): Promise<string> {
 
 /** 用 WScript.Shell 生成 .lnk，供扫描 fixture 使用 */
 export function createShortcut(directory: string, name: string, target: string): void {
+  createShortcuts(directory, [{ name, target }]);
+}
+
+/** 一次 PowerShell 调用创建多个快捷方式，避免逐条启动进程 */
+export function createShortcuts(
+  directory: string,
+  shortcuts: { name: string; target: string }[],
+): void {
+  if (shortcuts.length === 0) return;
   mkdirSync(directory, { recursive: true });
-  const shortcutPath = join(directory, `${name}.lnk`);
-  const escapedPath = shortcutPath.replace(/'/gu, "''");
-  const escapedTarget = target.replace(/'/gu, "''");
-  const script =
-    "$ws = New-Object -ComObject WScript.Shell; " +
-    `$s = $ws.CreateShortcut('${escapedPath}'); ` +
-    `$s.TargetPath = '${escapedTarget}'; ` +
-    "$s.Save()";
+  const steps = shortcuts
+    .map(({ name, target }) => {
+      const shortcutPath = join(directory, `${name}.lnk`).replace(/'/gu, "''");
+      const escapedTarget = target.replace(/'/gu, "''");
+      return (
+        `$s = $ws.CreateShortcut('${shortcutPath}'); ` +
+        `$s.TargetPath = '${escapedTarget}'; ` +
+        "$s.Save()"
+      );
+    })
+    .join("; ");
+  const script = `$ws = New-Object -ComObject WScript.Shell; ${steps}`;
   execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
   });

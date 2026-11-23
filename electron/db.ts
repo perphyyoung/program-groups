@@ -173,6 +173,39 @@ export function listActiveApps(): AppRecord[] {
   return rows.map(toApp);
 }
 
+export function listMissingApps(): AppRecord[] {
+  const rows = requireDb()
+    .prepare(
+      "SELECT * FROM apps WHERE status = 'missing' AND entry_type = 'app' ORDER BY name COLLATE NOCASE",
+    )
+    .all() as unknown as AppDbRow[];
+  return rows.map(toApp);
+}
+
+/** 用户主动清理缺失记录；只删 missing，活动应用不会被误删 */
+export function deleteMissingApps(ids: string[]): number {
+  if (ids.length === 0) return 0;
+  const database = requireDb();
+  const find = database.prepare("SELECT id FROM apps WHERE id = ? AND status = 'missing'");
+  const deleteNote = database.prepare("DELETE FROM notes WHERE key = ?");
+  const deleteApp = database.prepare("DELETE FROM apps WHERE id = ?");
+  let deleted = 0;
+  database.exec("BEGIN");
+  try {
+    for (const id of ids) {
+      if (!find.get(id)) continue;
+      deleteNote.run(`app:${id}`);
+      deleteApp.run(id);
+      deleted += 1;
+    }
+    database.exec("COMMIT");
+    return deleted;
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function listGroups(): GroupRow[] {
   const rows = requireDb()
     .prepare("SELECT * FROM groups ORDER BY sort, name COLLATE NOCASE")

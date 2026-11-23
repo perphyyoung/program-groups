@@ -48,8 +48,8 @@ export interface GroupEntry {
 export interface LibraryData {
   apps: AppEntry[];
   manualIgnored: AppEntry[];
+  missing: AppEntry[];
   groups: GroupEntry[];
-  missingCount: number;
   notes: Record<string, string>;
   groupSortMode: GroupSortMode;
   groupSortDirection: GroupSortDirection;
@@ -164,5 +164,6 @@ export type AppScope =
   | { kind: "all" }
   | { kind: "ungrouped" }
   | { kind: "ignored" }
+  | { kind: "missing" }
   | { kind: "settings" }
   | { kind: "group"; groupId: string };
