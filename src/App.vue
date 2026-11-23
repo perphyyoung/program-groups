@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 import AccordionSection from "./components/AccordionSection.vue";
 import AppRow from "./components/AppRow.vue";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import FilterChip from "./components/FilterChip.vue";
 import GroupDialog from "./components/GroupDialog.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
@@ -11,7 +12,7 @@ import AppToast from "./components/AppToast.vue";
 import RowContextMenu from "./components/RowContextMenu.vue";
 import ScanProgressCard from "./components/ScanProgressCard.vue";
 import SettingsPage from "./components/SettingsPage.vue";
-import { filterApps } from "./lib/app-filter";
+import { filterApps, type SourceFilter } from "./lib/app-filter";
 import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
@@ -24,6 +25,7 @@ import {
 import type {
   AppEntry,
   AppScope,
+  AppSource,
   GroupEntry,
   GreenDirEntry,
   GroupSortDirection,
@@ -50,6 +52,7 @@ const openReasons = ref<Set<IgnoreReason>>(new Set());
 const manualIgnored = ref<AppEntry[]>([]);
 const manualOpen = ref(false);
 const scope = ref<AppScope>({ kind: "ungrouped" });
+const sourceFilter = ref<SourceFilter>("all");
 const includeIgnored = ref(false);
 const search = ref("");
 const selected = ref<Set<string>>(new Set());
@@ -111,6 +114,32 @@ let unsubscribeIcons: (() => void) | null = null;
 const ungroupedCount = computed(
   () => apps.value.filter((item) => item.groupIds.length === 0).length,
 );
+const sourceCounts = computed(() => {
+  const counts: Record<AppSource, number> = { start: 0, store: 0, green: 0 };
+  for (const app of apps.value) {
+    if (app.groupIds.length === 0) counts[app.source] += 1;
+  }
+  return counts;
+});
+const visibleSources = computed(() =>
+  (["start", "store", "green"] as AppSource[]).filter((source) => sourceCounts.value[source] > 0),
+);
+const showSourceFilter = computed(
+  () => scope.value.kind === "ungrouped" && visibleSources.value.length >= 2,
+);
+watch(sourceCounts, (counts) => {
+  if (sourceFilter.value !== "all" && counts[sourceFilter.value] === 0) {
+    sourceFilter.value = "all";
+  }
+});
+const sourceOptions = computed(() => [
+  { value: "all" as const, label: "全部", count: ungroupedCount.value },
+  ...visibleSources.value.map((source) => ({
+    value: source,
+    label: source,
+    count: sourceCounts.value[source],
+  })),
+]);
 const selectedCount = computed(() => selected.value.size);
 const ignoredCount = computed(() => ignoredItems.value.length + manualIgnored.value.length);
 const manualIgnoredIds = computed(() => new Set(manualIgnored.value.map((app) => app.id)));
@@ -120,7 +149,13 @@ const sortedGroups = computed(() =>
 );
 
 const filteredApps = computed(() =>
-  filterApps(apps.value, scope.value, search.value, (app) => appNote(app.id)),
+  filterApps(
+    apps.value,
+    scope.value,
+    search.value,
+    (app) => appNote(app.id),
+    scope.value.kind === "ungrouped" ? sourceFilter.value : "all",
+  ),
 );
 
 const ignoredGroups = computed(() =>
@@ -371,6 +406,7 @@ function reasonLabel(reason: IgnoreReason): string {
 
 function selectScope(next: AppScope): void {
   scope.value = next;
+  sourceFilter.value = "all";
   clearSelection();
   if (next.kind === "settings") void loadIconSettings();
 }
@@ -849,6 +885,21 @@ onBeforeUnmount(() => {
         <header class="flex items-center gap-4 border-b border-white/10 px-5 py-3">
           <div class="min-w-0">
             <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
+            <div
+              v-if="showSourceFilter"
+              role="group"
+              aria-label="按来源筛选"
+              class="mt-1 flex flex-wrap items-center gap-1.5"
+            >
+              <FilterChip
+                v-for="option in sourceOptions"
+                :key="option.value"
+                :label="option.label"
+                :count="option.count"
+                :active="sourceFilter === option.value"
+                @select="sourceFilter = option.value"
+              />
+            </div>
             <label
               v-if="scope.kind === 'all'"
               class="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-slate-400"

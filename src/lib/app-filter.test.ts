@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { filterApps, matchesSearch } from "./app-filter";
 import type { AppEntry } from "./types";
 
-function app(id: string, name: string, groupIds: string[] = []): AppEntry {
+function app(
+  id: string,
+  name: string,
+  groupIds: string[] = [],
+  source: AppEntry["source"] = "start",
+): AppEntry {
   return {
     id,
     name,
@@ -10,7 +15,7 @@ function app(id: string, name: string, groupIds: string[] = []): AppEntry {
     launchKind: "lnk",
     exePath: `C:\\Apps\\${name}.exe`,
     iconFile: null,
-    source: "start",
+    source,
     status: "active",
     firstSeenAt: "2026-11-20T00:00:00.000Z",
     lastSeenAt: "2026-11-20T00:00:00.000Z",
@@ -53,5 +58,21 @@ describe("filterApps", () => {
     expect(filterApps(apps, { kind: "all" }, "截图", noteOf).map((item) => item.name)).toEqual([
       "看图王",
     ]);
+  });
+
+  it("按来源过滤，与当前栏和搜索叠加", () => {
+    const mixed = [
+      app("s", "开始工具"),
+      app("g", "绿色工具", [], "green"),
+      app("g2", "绿色看图", [], "green"),
+      app("st", "商店工具", [], "store"),
+    ];
+    expect(
+      filterApps(mixed, { kind: "ungrouped" }, "", undefined, "green").map((i) => i.id),
+    ).toEqual(["g", "g2"]);
+    expect(
+      filterApps(mixed, { kind: "ungrouped" }, "看图", undefined, "green").map((i) => i.id),
+    ).toEqual(["g2"]);
+    expect(filterApps(mixed, { kind: "ungrouped" }, "", undefined, "all")).toHaveLength(4);
   });
 });

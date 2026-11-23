@@ -1,4 +1,6 @@
-import type { AppEntry, AppScope } from "./types";
+import type { AppEntry, AppScope, AppSource } from "./types";
+
+export type SourceFilter = AppSource | "all";
 
 export function fileBaseName(filePath: string): string {
   const parts = filePath.split(/[\\/]/u);
@@ -26,14 +28,20 @@ export function inScope(app: AppEntry, scope: AppScope): boolean {
   return true;
 }
 
-/** 当前栏 + 搜索，按名称排序；渲染层只使用这一套过滤口径 */
+/** 当前栏 + 搜索，可选按来源过滤；渲染层只使用这一套过滤口径 */
 export function filterApps(
   apps: AppEntry[],
   scope: AppScope,
   keyword: string,
   noteOf?: (app: AppEntry) => string | undefined,
+  source: SourceFilter = "all",
 ): AppEntry[] {
   return apps
-    .filter((app) => inScope(app, scope) && matchesSearch(app, keyword, noteOf))
+    .filter(
+      (app) =>
+        (source === "all" || app.source === source) &&
+        inScope(app, scope) &&
+        matchesSearch(app, keyword, noteOf),
+    )
     .toSorted((a, b) => a.name.localeCompare(b.name, "zh-CN"));
 }
