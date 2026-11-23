@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CountBadge from "./CountBadge.vue";
+
 defineProps<{
   label: string;
   count: number;
@@ -20,11 +22,6 @@ const emit = defineEmits<{ select: [] }>();
     @click="emit('select')"
   >
     <span :class="active ? 'text-indigo-100' : 'text-slate-400'">{{ label }}</span>
-    <span
-      class="min-w-7 rounded-md px-1.5 py-1 text-center text-xs font-semibold tabular-nums"
-      :class="active ? 'bg-indigo-400/25 text-white' : 'bg-white/10 text-slate-100'"
-    >
-      {{ count.toLocaleString("zh-CN") }}
-    </span>
+    <CountBadge :count="count" :active="active" />
   </button>
 </template>

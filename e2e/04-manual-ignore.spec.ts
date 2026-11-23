@@ -5,7 +5,7 @@ test("手动忽略持久化，拖入分组后自动恢复", async ({ slot }) => 
   await expect(page.getByRole("button", { name: "测试应用", exact: true })).toBeVisible();
 
   /* 准备一个分组，供手动忽略项拖入 */
-  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
   await page.getByLabel("分组名").fill("测试组");
   await page.getByRole("button", { name: "创建分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toBeVisible();

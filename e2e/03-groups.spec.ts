@@ -9,7 +9,7 @@ async function openGroupMenu(page: Page, groupName: string): Promise<void> {
 }
 
 async function createGroup(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "新建分组", exact: true });
   await dialog.getByLabel("分组名", { exact: true }).fill(name);
   await dialog.getByRole("button", { name: "创建分组", exact: true }).click();
@@ -21,7 +21,7 @@ test("新建分组自动聚焦并保留当前栏，多组归属重启后保留",
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();
 
-  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
   await expect(page.getByLabel("分组名")).toBeFocused();
   await page.getByLabel("分组名").fill("测试组");
   await page.getByRole("button", { name: "创建分组", exact: true }).click();
@@ -40,7 +40,7 @@ test("新建分组自动聚焦并保留当前栏，多组归属重启后保留",
   await page.getByRole("button", { name: "加入", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试组", exact: true })).toContainText("1");
 
-  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
   await page.getByLabel("分组名").fill("常用");
   await page.getByRole("button", { name: "创建分组", exact: true }).click();
   await expect(page.getByRole("heading", { name: "未分组", exact: true })).toBeVisible();
@@ -69,7 +69,7 @@ test("分组重命名与删除：行内校验、影响说明与焦点返回", as
   const { page } = slot;
 
   /* 新建专用分组，并放入一个应用用于删除影响说明 */
-  await page.getByRole("button", { name: "+ 新建分组", exact: true }).click();
+  await page.getByRole("button", { name: "新建分组", exact: true }).click();
   const createDialog = page.getByRole("dialog", { name: "新建分组", exact: true });
   await expect(createDialog).toBeVisible();
   await expect(createDialog.getByLabel("分组名", { exact: true })).toBeFocused();
@@ -228,8 +228,11 @@ test("分组排序：方式切换、拖拽与键盘排序持久化", async ({ sl
     exact: true,
   });
   const rowA = page.getByRole("button", { name: "排序A", exact: true });
-  await expect(gripB).toBeVisible();
+  const rowB = page.getByRole("button", { name: "排序B", exact: true });
   await expect(rowA).toBeVisible();
+  /* 握把随行 hover 出现，再移到握把上开始拖拽 */
+  await rowB.hover();
+  await expect(gripB).toHaveCSS("opacity", "1");
   await gripB.hover();
   const rowBox = await rowA.boundingBox();
   expect(rowBox).not.toBeNull();
