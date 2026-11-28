@@ -1,4 +1,5 @@
 import type {
+  BackupStats,
   GreenDirEntry,
   GreenRemoveResult,
   GroupsData,
@@ -21,6 +22,9 @@ export interface Api {
   scanGreen(): Promise<ScanSummary>;
   deleteMissingApps(ids: string[]): Promise<number>;
   setRecentWindowDays(days: number): Promise<void>;
+  backupExport(): Promise<{ path: string | null; stats: BackupStats }>;
+  backupPickImport(): Promise<{ filePath: string; stats: BackupStats } | null>;
+  backupApplyImport(filePath: string): Promise<{ apps: number; groups: number }>;
   iconSettings(): Promise<IconSettings>;
   setIconSources(sources: IconSource[]): Promise<void>;
   updateIcons(options: IconUpdateOptions): Promise<IconUpdateResult>;

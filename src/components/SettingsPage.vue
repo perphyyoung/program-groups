@@ -7,6 +7,8 @@ const props = defineProps<{
   busy: boolean;
   progress: IconUpdateProgress | null;
   greenDirs: GreenDirEntry[];
+  /** 备份互斥：扫描 / 图标更新 / 备份进行中一律禁用导出导入 */
+  backupBusy: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -14,6 +16,8 @@ const emit = defineEmits<{
   sourcesChange: [sources: IconSource[]];
   pickGreen: [];
   removeGreen: [entry: GreenDirEntry];
+  exportBackup: [];
+  importBackup: [];
 }>();
 
 const force = ref(false);
@@ -251,6 +255,37 @@ function startUpdate(): void {
             {{ progress.cached }} · 失败 {{ progress.failed }}
           </template>
         </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="w-full pt-5" aria-labelledby="settings-backup-title">
+    <div class="w-full rounded-xl border border-white/10 bg-[#0f131a] px-6 py-5">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h2 id="settings-backup-title" class="text-sm font-semibold text-slate-100">全量备份</h2>
+          <p class="mt-1 text-sm text-slate-400">
+            导出全部应用、分组、备注与设置；不含图标缓存，恢复后可在下方重建。
+          </p>
+        </div>
+        <div class="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            class="h-9 min-w-[96px] rounded-lg border border-slate-600/70 bg-white/5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="backupBusy"
+            @click="emit('importBackup')"
+          >
+            导入备份
+          </button>
+          <button
+            type="button"
+            class="h-9 min-w-[96px] rounded-lg border border-slate-600/70 bg-white/5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="backupBusy"
+            @click="emit('exportBackup')"
+          >
+            导出备份
+          </button>
+        </div>
       </div>
     </div>
   </section>

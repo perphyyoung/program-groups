@@ -7,6 +7,8 @@ import {
   net,
   protocol,
   shell,
+  type OpenDialogOptions,
+  type SaveDialogOptions,
   type WebContents,
 } from "electron";
 import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
@@ -16,6 +18,7 @@ import { join, extname, parse, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   addMembers,
+  backupStats,
   clearIconFiles,
   closeDatabase,
   countGreenAppsUnder,
@@ -47,6 +50,8 @@ import {
   renameGroup,
   reorderGroups,
   restoreManualApp,
+  serializeDatabase,
+  restoreBackupData,
   setEntryTypes,
   setGroupSortDirection,
   setGroupSortMode,
@@ -56,6 +61,17 @@ import {
   setNote,
   setRecentWindowDays,
 } from "./db";
+import {
+  backupDatabasePath,
+  buildBackupManifest,
+  buildBackupPayload,
+  createTempDir,
+  createZipArchive,
+  extractZipArchive,
+  readBackupManifest,
+  removeTempDir,
+} from "./backup";
+import type { BackupStats } from "../src/lib/types";
 import { log, logPath } from "./logger";
 import {
   extractIcons,
@@ -653,6 +669,132 @@ ipcMain.handle("icons:update", (event, options: unknown) =>
 );
 
 ipcMain.handle("green:list", () => handleIpc("green:list", () => greenDirEntries()));
+
+/** e2e 直通：设了 PG_BACKUP_DIR 时不弹对话框，导出/导入固定落到该目录 */
+function backupTargetDir(): string | null {
+  return process.env["PG_BACKUP_DIR"] ?? null;
+}
+
+function assertBackupIdle(): void {
+  if (scanning) throw new Error("扫描进行中，请稍后再试");
+  if (iconUpdating) throw new Error("图标更新进行中，请稍后再试");
+}
+
+async function showSaveDialog(
+  win: BrowserWindow | null,
+  options: SaveDialogOptions,
+): Promise<string | null> {
+  const result = win
+    ? await dialog.showSaveDialog(win, options)
+    : await dialog.showSaveDialog(options);
+  return result.canceled || !result.filePath ? null : result.filePath;
+}
+
+async function showOpenFileDialog(
+  win: BrowserWindow | null,
+  options: OpenDialogOptions,
+): Promise<string | null> {
+  const result = win
+    ? await dialog.showOpenDialog(win, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]!;
+}
+
+ipcMain.handle("backup:export", (event) =>
+  handleIpcAsync(
+    "backup:export",
+    async (): Promise<{ path: string | null; stats: BackupStats }> => {
+      assertBackupIdle();
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const stats = backupStats();
+      const manifest = buildBackupManifest(stats);
+
+      const dir = backupTargetDir();
+      let zipPath: string | null = null;
+      if (dir) {
+        mkdirSync(dir, { recursive: true });
+        zipPath = join(dir, "pg-backup-e2e.zip");
+      } else {
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/gu, "");
+        zipPath = await showSaveDialog(win, {
+          title: "导出备份",
+          defaultPath: `pg-backup-${stamp}.zip`,
+          filters: [{ name: "pg 备份", extensions: ["zip"] }],
+        });
+        if (!zipPath) return { path: null, stats };
+      }
+
+      const tempDir = createTempDir("pg-export");
+      try {
+        buildBackupPayload(tempDir, manifest, serializeDatabase());
+        createZipArchive(tempDir, zipPath);
+      } finally {
+        removeTempDir(tempDir);
+      }
+      log.info(`[backup] export=${zipPath} apps=${stats.apps} groups=${stats.groups}`);
+      return { path: zipPath, stats };
+    },
+  ),
+);
+
+ipcMain.handle("backup:pickImport", (event) =>
+  handleIpcAsync(
+    "backup:pickImport",
+    async (): Promise<{ filePath: string; stats: BackupStats } | null> => {
+      assertBackupIdle();
+      log.debug("[backup] pick start");
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const dir = backupTargetDir();
+      let picked: string | null = null;
+      if (dir) {
+        picked = join(dir, "pg-backup-e2e.zip");
+        if (!existsSync(picked)) throw new Error("备份文件不存在");
+      } else {
+        picked = await showOpenFileDialog(win, {
+          title: "导入备份",
+          filters: [{ name: "pg 备份", extensions: ["zip"] }],
+          properties: ["openFile"],
+        });
+        if (!picked) return null;
+      }
+
+      /* 解压临时目录读 manifest 校验，校验完即清理；恢复时 applyImport 再解压一次 */
+      const tempDir = createTempDir("pg-import-check");
+      try {
+        log.debug(`[backup] pick extract=${resolve(picked)}`);
+        extractZipArchive(picked, tempDir);
+        log.debug("[backup] pick extract ok");
+        const manifest = readBackupManifest(tempDir);
+        log.debug("[backup] pick manifest ok");
+        return { filePath: resolve(picked), stats: manifest.stats };
+      } finally {
+        removeTempDir(tempDir);
+      }
+    },
+  ),
+);
+
+ipcMain.handle("backup:applyImport", (_event, filePath: unknown) =>
+  handleIpc("backup:applyImport", (): { apps: number; groups: number } => {
+    assertBackupIdle();
+    if (typeof filePath !== "string" || filePath.length === 0) {
+      throw new Error("备份路径无效");
+    }
+    const tempDir = createTempDir("pg-import");
+    try {
+      extractZipArchive(filePath, tempDir);
+      const manifest = readBackupManifest(tempDir);
+      const counts = restoreBackupData(backupDatabasePath(tempDir));
+      clearIconFiles();
+      log.info(
+        `[backup] import=${filePath} apps=${counts.apps} groups=${counts.groups} schema=${manifest.schemaVersion}`,
+      );
+      return counts;
+    } finally {
+      removeTempDir(tempDir);
+    }
+  }),
+);
 
 ipcMain.handle("green:pick", (event) =>
   handleIpcAsync("green:pick", async () => {

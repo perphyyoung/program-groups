@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import type {
   AppLaunchKind,
@@ -15,6 +15,7 @@ import type {
   ScannedApp,
 } from "../src/lib/types";
 import { DEFAULT_RECENT_WINDOW_DAYS, isRecentWindowDays } from "../src/lib/recent-changes";
+import type { BackupStats } from "../src/lib/types";
 
 export type DiscoveredApp = ScannedApp;
 
@@ -111,6 +112,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups(name COLLATE NOCASE)
 
 let db: DatabaseSync | null = null;
 
+/** 当前库结构版本；导入备份时校验不能高于此值 */
+export const SCHEMA_VERSION = 2;
+
 function requireDb(): DatabaseSync {
   if (!db) throw new Error("数据库尚未初始化");
   return db;
@@ -135,9 +139,101 @@ export function openDatabase(dbPath: string): DatabaseSync {
     db.exec("ALTER TABLE apps ADD COLUMN status_changed_at TEXT");
   }
   db.prepare(
-    "INSERT INTO meta (key, value) VALUES ('schema_version', '2') ON CONFLICT(key) DO NOTHING",
+    `INSERT INTO meta (key, value) VALUES ('schema_version', '${SCHEMA_VERSION}') ON CONFLICT(key) DO NOTHING`,
   ).run();
   return db;
+}
+
+/** 整库序列化字节（SQLite 文件格式），供导出备份落盘 */
+export function serializeDatabase(): Uint8Array {
+  return requireDb().serialize();
+}
+
+/** 备份统计：manifest.json 与导入确认弹窗共用 */
+export function backupStats(): BackupStats {
+  const database = requireDb();
+  const count = (sql: string): number => {
+    const row = database.prepare(sql).get() as { count: number };
+    return Number(row.count);
+  };
+  return {
+    apps: count("SELECT COUNT(*) AS count FROM apps"),
+    groups: count("SELECT COUNT(*) AS count FROM groups"),
+    manualIgnored: count("SELECT COUNT(*) AS count FROM manual_ignores"),
+    notes: count("SELECT COUNT(*) AS count FROM notes"),
+  };
+}
+/** 各表恢复用的列清单（与 SCHEMA 一致）；备份缺列时补 NULL（v1 备份无 status_changed_at） */
+const BACKUP_TABLE_COLUMNS = {
+  apps: [
+    "id",
+    "name",
+    "launch_path",
+    "launch_kind",
+    "exe_path",
+    "icon_file",
+    "source",
+    "status",
+    "entry_type",
+    "first_seen_at",
+    "last_seen_at",
+    "status_changed_at",
+  ],
+  groups: ["id", "name", "sort", "created_at"],
+  app_groups: ["app_id", "group_id", "created_at"],
+  manual_ignores: ["app_id", "created_at"],
+  notes: ["key", "note", "updated_at"],
+  meta: ["key", "value"],
+} as const;
+
+/** 恢复顺序：先父表后子表，满足外键约束；清空顺序相反 */
+const RESTORE_ORDER = ["apps", "groups", "app_groups", "manual_ignores", "notes", "meta"] as const;
+
+/**
+ * 从备份库快照恢复全部数据：现有连接上单事务清表重灌，不替换数据库文件，失败整事务回滚。
+ * meta.schema_version 恢复后强制写回当前值，其余 meta 键保留备份值。
+ */
+export function restoreBackupData(backupDbPath: string): { apps: number; groups: number } {
+  const database = requireDb();
+  const backup = new DatabaseSync(backupDbPath, { readOnly: true });
+  try {
+    database.exec("BEGIN");
+    try {
+      for (const table of RESTORE_ORDER.toReversed()) {
+        database.exec(`DELETE FROM ${table}`);
+      }
+      for (const table of RESTORE_ORDER) {
+        const columns = BACKUP_TABLE_COLUMNS[table];
+        const rows = backup.prepare(`SELECT * FROM ${table}`).all() as unknown as
+          | Record<string, unknown>[]
+          | undefined;
+        const insert = database.prepare(
+          `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+        );
+        for (const row of rows ?? []) {
+          insert.run(...columns.map((column) => (row[column] ?? null) as SQLInputValue));
+        }
+      }
+      database
+        .prepare(
+          "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .run(String(SCHEMA_VERSION));
+      const apps = database.prepare("SELECT COUNT(*) AS count FROM apps").get() as {
+        count: number;
+      };
+      const groups = database.prepare("SELECT COUNT(*) AS count FROM groups").get() as {
+        count: number;
+      };
+      database.exec("COMMIT");
+      return { apps: Number(apps.count), groups: Number(groups.count) };
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    backup.close();
+  }
 }
 
 export function closeDatabase(): void {

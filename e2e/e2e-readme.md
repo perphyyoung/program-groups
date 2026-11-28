@@ -15,6 +15,7 @@
 | `09-source-filter.spec.ts`  | 未分组栏按来源筛选、计数与重置               |
 | `10-missing.spec.ts`        | 缺失应用列表、来源筛选、逐个 / 勾选批量删除  |
 | `11-recent-changes.spec.ts` | 近期变化栏：新增 / 恢复 / 缺失、天数窗口     |
+| `12-backup.spec.ts`         | 全量备份：设置页导出 / 导入恢复              |
 
 ## 01-app-shell.spec.ts
 
@@ -143,6 +144,14 @@
 - 恢复：SQL seed `first_seen_at` 到 20 天前并置 missing，重启后放回快捷方式刷新，归入「恢复」块而非新增块（恢复需要主进程历史时间戳，clock 管不到，只能 seed）
 - 持久化：SQL seed `meta.recent_window_days = 30`，重启后输入框显示 30
 - 类型筛选：SQL 直插一行缺失应用造出两类，chip 行显示「全部 2 / 新增 1 / 缺失 1」（恢复为 0 不显示）；点 chip 单类切换、回全部；删除种子回到单类后 chip 整行隐藏（至少两类非空才显示）
+
+## 12-backup.spec.ts
+
+验证设置页全量备份。两个用例同文件顺序执行，经固定路径 `base/backup/pg-backup-e2e.zip` 共享导出产物（retry 换 worker 时模块变量不可靠，用磁盘传递）：
+
+- 导出：`PG_BACKUP_DIR` 直通（不弹对话框）落 ZIP，文件头为 `PK`；导出前建分组供恢复断言
+- 导入：SQL 删分组破坏现状 → 启动确认分组消失 → 直通选 ZIP → 确认弹窗列出备份统计、默认聚焦取消 → 确认后分组恢复；「备份已导入」提示会被导入后自动扫描的完成提示覆盖，不断言该提示
+- e2e 直通约定：设 `PG_BACKUP_DIR` 时导出固定写 `pg-backup-e2e.zip`、导入固定读该文件，不弹对话框
 
 ## 约定
 

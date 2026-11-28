@@ -78,6 +78,7 @@ export async function launchApp(
   appData: string,
   scanDir: string,
   greenDirs: string[] = [],
+  extraEnv: Record<string, string> = {},
 ): Promise<LaunchedApp> {
   const app = await electron.launch({
     args: ["."],
@@ -87,6 +88,7 @@ export async function launchApp(
       PG_SCAN_DIRS: scanDir,
       PG_STORE_JSON: "[]",
       PG_GREEN_DIRS: greenDirs.join(";"),
+      ...extraEnv,
     }),
   });
   const page = await app.firstWindow();

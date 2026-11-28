@@ -11,6 +11,10 @@
 ## 教训
 
 - Electron IPC 参数必须是可结构化克隆的纯数据：禁止把 `ref` / `reactive` 的深层代理对象或数组直接传给 `ipcRenderer.invoke`，先复制成纯值（如 `[...ids]`）或 `toRaw`；报错特征为 `An object could not be cloned.`，该问题已多次出现
+- Edit 的 old_string 是「将被删除的原文」，不是定位锚：插入内容时 new_string 必须包含 old_string 原文再加新增；把接口头一行当锚点、new_string 只写新增，会清掉整个接口体（ScanProgress 被清空一次）。多文件快速连发编辑时，每条 Edit 提交前自查：old_string 是否与文件现状逐字一致、new_string 是否完整保留不该动的部分
+- 删除 / 改名标识符前先 `rg` 全部引用点再动手；import 行照抄文件原文，不凭记忆重写（createShortcuts 单复数、fixtures 的 target 孤立引用都由此而来）
+- Write 新文件前规划好完整结构，import 全部放顶部；不要写完再用 Edit 补 import
+- 改产品默认行为（如默认栏）后，立即 `rg` 排查受影响的调用方与用例；不要等 e2e 失败才暴露
 - 排障（测试失败、崩溃、数据不一致）先加日志/打点拿事实，禁止纯推理猜测下结论；一次跑不通就继续加打点，直到日志给出直接证据。用户多次强调过
 
 ## 编辑顺序

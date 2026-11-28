@@ -296,6 +296,9 @@ WHERE a.status = 'active'
 | --- | --- | --- |
 | `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection; recentWindowDays: number }`（`apps` 只含 active 且未手动忽略） |
 | `recent:setWindowDays` | `days` | `void`，写 `meta.recent_window_days`；主进程校验 1–365 整数 |
+| `backup:export` | — | `{ path: string \| null; stats }`，系统保存对话框（e2e 用 `PG_BACKUP_DIR` 直通）；ZIP 内含 `manifest.json` 与 `pg.db` 快照 |
+| `backup:pickImport` | — | `{ filePath: string; stats } \| null`，系统打开对话框选 ZIP 并校验 manifest（非 pg 备份 / 版本较新直接拒绝） |
+| `backup:applyImport` | `filePath` | `{ apps: number; groups: number }`，单事务清表重灌（不替换数据库文件），`schema_version` 强制写回当前值，清空图标引用 |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary`（只读图标缓存，不返回图标状态） |
 | `library:scanGreen` | — | `ScanSummary`，只扫绿色软件目录，不动 start / store |
@@ -455,7 +458,7 @@ WHERE a.status = 'active'
 - 应用别名、分组图标与颜色、组内拖拽排序
 - 自动建议分组（基于名称关键词 / 使用频率），但必须保持用户可改
 - 使用统计：启动次数、最近使用、久未使用提醒
-- 导入导出、换机迁移
+- 导入导出、换机迁移（全量备份导出/导入已在设置页实现，见 7.2 IPC `backup:*`）
 - 安装/卸载监听，扫描改为增量事件驱动
 
 ## 15. 实现状态
@@ -463,6 +466,7 @@ WHERE a.status = 'active'
 - 开始菜单扫描、快捷方式解析、规则过滤、去重、图标缓存读取与手动提取
 - SQLite 存储、扫描对账、缺失应用标记与归属保留
 - 未分组池、分组增删改、多对多归属、批量与拖拽归组（行首握把入口，拖拽中目标高亮）、移出分组；分组支持手动 / 名称 / 创建顺序与正序 / 倒序，手动排序可拖拽或键盘调整
+- 全量备份：设置页「全量备份」卡片导出 / 导入；ZIP（manifest.json + pg.db 快照，PowerShell 压缩）不引第三方依赖；导入事务清表重灌 + manifest 版本校验；实现见 `electron/backup.ts`
 - 来源：开始菜单 `.lnk`、Store/UWP AUMID 与绿色软件目录；Store / Developer 签名进入应用，其他打包应用进已忽略「Store 自动忽略应用」；绿色软件由设置页选择目录（最多 5 个），扫描全部 `.exe`，辅助程序由用户手动忽略；行名称旁显示 `start` / `store` / `green` 徽标；开始菜单扫描根为 `Start Menu` 本身，包含根级 `.lnk`
 - 已忽略栏：与未分组平级，按原因折叠分组并支持搜索；组头吸顶，重复快捷方式独立成组，行内可定位 `.lnk`；折叠组抽成通用 `AccordionSection`
 - 全部应用栏：可选「包含已忽略项」，在应用列表下方追加规则忽略项并参与搜索；默认不加载，重复项不列入

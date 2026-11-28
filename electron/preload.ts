@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  BackupStats,
   GreenDirEntry,
   GreenRemoveResult,
   GroupsData,
@@ -23,6 +24,12 @@ contextBridge.exposeInMainWorld("api", {
   deleteMissingApps: (ids: string[]): Promise<number> => ipcRenderer.invoke("missing:delete", ids),
   setRecentWindowDays: (days: number): Promise<void> =>
     ipcRenderer.invoke("recent:setWindowDays", days),
+  backupExport: (): Promise<{ path: string | null; stats: BackupStats }> =>
+    ipcRenderer.invoke("backup:export"),
+  backupPickImport: (): Promise<{ filePath: string; stats: BackupStats } | null> =>
+    ipcRenderer.invoke("backup:pickImport"),
+  backupApplyImport: (filePath: string): Promise<{ apps: number; groups: number }> =>
+    ipcRenderer.invoke("backup:applyImport", filePath),
   iconSettings: (): Promise<IconSettings> => ipcRenderer.invoke("icons:settings"),
   setIconSources: (sources: IconSource[]): Promise<void> =>
     ipcRenderer.invoke("icons:setSources", sources),

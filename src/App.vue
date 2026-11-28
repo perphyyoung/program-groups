@@ -30,6 +30,7 @@ import type {
   AppEntry,
   AppScope,
   AppSource,
+  BackupStats,
   GroupEntry,
   GreenDirEntry,
   GroupSortDirection,
@@ -48,7 +49,8 @@ type DialogState = { kind: "create" } | { kind: "rename"; group: GroupEntry };
 type ConfirmState =
   | { kind: "green"; entry: GreenDirEntry }
   | { kind: "group"; group: GroupEntry }
-  | { kind: "missing"; ids: string[]; name?: string };
+  | { kind: "missing"; ids: string[]; name?: string }
+  | { kind: "backup-import"; filePath: string; stats: BackupStats };
 
 const apps = ref<AppEntry[]>([]);
 const groups = ref<GroupEntry[]>([]);
@@ -89,6 +91,7 @@ const confirmTitle = computed(() => {
     if (state.ids.length === 1 && state.name) return `删除缺失应用「${state.name}」？`;
     return `删除 ${state.ids.length} 个缺失应用？`;
   }
+  if (state.kind === "backup-import") return "导入备份？";
   return `删除分组「${state.group.name}」？`;
 });
 const confirmDescription = computed(() => {
@@ -100,6 +103,13 @@ const confirmDescription = computed(() => {
   if (state.kind === "missing") {
     return `将从数据库删除 ${state.ids.length} 个缺失记录，分组归属与备注一并清除；不会删除磁盘文件。`;
   }
+  if (state.kind === "backup-import") {
+    const stats = state.stats;
+    return (
+      `备份包含应用 ${stats.apps} 个、分组 ${stats.groups} 个、手动忽略 ${stats.manualIgnored} 个、备注 ${stats.notes} 条。` +
+      `导入将覆盖当前全部应用、分组、备注与设置；图标缓存不受影响，可在设置页重建。`
+    );
+  }
   const count = state.group.count;
   if (count > 0) {
     return `组内 ${count} 个应用会失去这个分组；只属于它的应用会回到未分组。应用不会被卸载，其他分组不受影响。`;
@@ -108,10 +118,14 @@ const confirmDescription = computed(() => {
 });
 const confirmLabel = computed(() => {
   const kind = confirmState.value?.kind;
+  if (kind === "backup-import") return "导入备份";
   if (kind === "group") return "删除分组";
   if (kind === "missing") return "删除";
   return "移除目录";
 });
+const confirmBusyLabel = computed(() =>
+  confirmState.value?.kind === "backup-import" ? "导入中…" : "删除中…",
+);
 const targetGroupId = ref("");
 const toast = ref<{ message: string; kind: "info" | "error" } | null>(null);
 const dialog = ref<DialogState | null>(null);
@@ -269,7 +283,10 @@ const recentKindVisible = computed(() => recentKindOptions.value.length >= 3);
 watch(
   () => recentKindOptions.value,
   (options) => {
-    if (recentKindFilter.value !== "all" && !options.some((o) => o.kind === recentKindFilter.value)) {
+    if (
+      recentKindFilter.value !== "all" &&
+      !options.some((o) => o.kind === recentKindFilter.value)
+    ) {
       recentKindFilter.value = "all";
     }
   },
@@ -802,6 +819,12 @@ async function confirmAction(): Promise<void> {
       missingSelected.value = new Set();
       await load();
       showToast(`已删除 ${deleted} 个缺失应用`, "info");
+    } else if (current.kind === "backup-import") {
+      const counts = await window.api.backupApplyImport(current.filePath);
+      await load();
+      showToast(`备份已导入：应用 ${counts.apps} · 分组 ${counts.groups}`, "info");
+      /* 换机场景磁盘与备份不一致，导入后立即扫描对账缺失 */
+      void scan();
     } else {
       await window.api.deleteGroup(current.group.id);
       if (scope.value.kind === "group" && scope.value.groupId === current.group.id) {
@@ -832,6 +855,46 @@ async function setIconSources(sources: IconSource[]): Promise<void> {
   } catch (error) {
     iconSettings.value = previous;
     showToast(`保存图标来源失败：${errorMessage(error)}`, "error");
+  }
+}
+
+const backupWorking = ref(false);
+
+async function exportBackup(): Promise<void> {
+  if (backupWorking.value) return;
+  backupWorking.value = true;
+  try {
+    const result = await window.api.backupExport();
+    if (result.path) showToast("备份已导出", "info");
+  } catch (error) {
+    showToast(`导出备份失败：${errorMessage(error)}`, "error");
+  } finally {
+    backupWorking.value = false;
+  }
+}
+
+/** 选好备份文件后走确认弹窗，确认动作在 confirmAction 的 backup-import 分支 */
+async function importBackup(): Promise<void> {
+  if (backupWorking.value) return;
+  backupWorking.value = true;
+  try {
+    const picked = await window.api.backupPickImport();
+    void window.api.log(
+      "debug",
+      `[backup] pick 返回 ${picked ? `filePath=${picked.filePath}` : "null"}`,
+    );
+    if (!picked) return;
+    confirmError.value = null;
+    confirmState.value = {
+      kind: "backup-import",
+      filePath: picked.filePath,
+      stats: picked.stats,
+    };
+    void window.api.log("debug", "[backup] confirmState 已设置，确认弹窗应已打开");
+  } catch (error) {
+    showToast(`导入备份失败：${errorMessage(error)}`, "error");
+  } finally {
+    backupWorking.value = false;
   }
 }
 
@@ -1108,7 +1171,9 @@ onBeforeUnmount(() => {
       />
 
       <main class="relative flex min-w-0 flex-1 flex-col">
-        <header class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/10 px-5 py-2.5">
+        <header
+          class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/10 px-5 py-2.5"
+        >
           <h1 class="shrink-0 text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
           <div
             v-if="scope.kind === 'recent'"
@@ -1205,10 +1270,13 @@ onBeforeUnmount(() => {
             :busy="iconUpdating"
             :progress="iconProgress"
             :green-dirs="greenDirs"
+            :backup-busy="backupWorking || scanning || iconUpdating"
             @update="updateIcons"
             @sources-change="setIconSources"
             @pick-green="pickGreenDir"
             @remove-green="requestRemoveGreen"
+            @export-backup="exportBackup"
+            @import-backup="importBackup"
           />
 
           <div v-else-if="scope.kind === 'ignored'" class="h-full">
@@ -1544,7 +1612,7 @@ onBeforeUnmount(() => {
       :description="confirmDescription"
       :confirm-label="confirmLabel"
       :busy="confirmBusy"
-      busy-label="删除中…"
+      :busy-label="confirmBusyLabel"
       :error="confirmError"
       @confirm="confirmAction"
       @cancel="closeConfirm"

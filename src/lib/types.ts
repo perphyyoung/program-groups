@@ -154,6 +154,14 @@ export interface GreenRemoveResult {
   deleted: number;
 }
 
+/** 全量备份的统计（manifest.json 与导入确认弹窗共用） */
+export interface BackupStats {
+  apps: number;
+  groups: number;
+  manualIgnored: number;
+  notes: number;
+}
+
 export interface ScanProgress {
   phase: "start-menu" | "store" | "green" | "icons" | "done";
   done: number;
