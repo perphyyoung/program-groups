@@ -1107,75 +1107,73 @@ onBeforeUnmount(() => {
       />
 
       <main class="relative flex min-w-0 flex-1 flex-col">
-        <header class="flex items-center gap-4 border-b border-white/10 px-5 py-3">
-          <div class="min-w-0">
-            <h1 class="truncate text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
-            <div
-              v-if="showSourceFilter"
-              role="group"
-              aria-label="按来源筛选"
-              class="mt-1 flex flex-wrap items-center gap-1.5"
-            >
-              <FilterChip
-                v-for="option in sourceOptions"
-                :key="option.value"
-                :label="option.label"
-                :count="option.count"
-                :active="activeSourceFilter === option.value"
-                @select="activeSourceFilter = option.value"
-              />
-            </div>
-            <label
-              v-if="scope.kind === 'all'"
-              class="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-slate-400"
-            >
-              <input v-model="includeIgnored" type="checkbox" class="accent-indigo-500" />
-              包含已忽略项
-            </label>
-            <div
-              v-if="scope.kind === 'recent'"
-              class="mt-1 flex w-fit items-center gap-1.5 text-xs text-slate-400"
-            >
-              <label for="recent-window-days">最近</label>
-              <input
-                id="recent-window-days"
-                type="number"
-                min="1"
-                max="365"
-                step="1"
-                class="h-6 w-14 rounded-md border border-white/10 bg-white/5 px-1.5 text-center text-xs text-slate-200 outline-none focus:border-indigo-400/60 user-invalid:border-rose-400/60"
-                :value="recentWindowDraft"
-                :aria-invalid="recentWindowError"
-                :aria-describedby="recentWindowError ? 'recent-window-error' : undefined"
-                @input="onWindowInput"
-                @blur="commitWindowDays"
-                @keydown.enter.prevent="commitWindowDays"
-                @keydown.esc.prevent="resetWindowDraft"
-              />
-              <span>天</span>
-            </div>
-            <p
-              v-if="scope.kind === 'recent' && recentWindowError"
-              id="recent-window-error"
-              class="mt-0.5 text-xs text-rose-300"
-            >
-              请输入 1–365 的整数
-            </p>
-            <div
-              v-if="scope.kind === 'recent' && recentKindVisible"
-              role="group"
-              aria-label="按变化类型筛选"
-              class="mt-1 flex flex-wrap items-center gap-1.5"
-            >
-              <FilterChip
-                v-for="option in recentKindOptions"
-                :key="option.kind"
-                :label="option.label"
-                :count="option.count"
-                :active="recentKindFilter === option.kind"
-                @select="recentKindFilter = option.kind"
-              />
-            </div>
+        <header class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-white/10 px-5 py-2.5">
+          <h1 class="shrink-0 text-base font-semibold text-slate-100">{{ currentTitle }}</h1>
+          <div
+            v-if="scope.kind === 'recent'"
+            class="flex items-center gap-1.5 text-xs text-slate-400"
+          >
+            <label for="recent-window-days">最近</label>
+            <input
+              id="recent-window-days"
+              type="number"
+              min="1"
+              max="365"
+              step="1"
+              class="h-6 w-14 rounded-md border border-white/10 bg-white/5 px-1.5 text-center text-xs text-slate-200 outline-none focus:border-indigo-400/60 user-invalid:border-rose-400/60"
+              :value="recentWindowDraft"
+              :aria-invalid="recentWindowError"
+              :aria-describedby="recentWindowError ? 'recent-window-error' : undefined"
+              @input="onWindowInput"
+              @blur="commitWindowDays"
+              @keydown.enter.prevent="commitWindowDays"
+              @keydown.esc.prevent="resetWindowDraft"
+            />
+            <span>天</span>
+          </div>
+          <p
+            v-if="scope.kind === 'recent' && recentWindowError"
+            id="recent-window-error"
+            class="text-xs text-rose-300"
+          >
+            请输入 1–365 的整数
+          </p>
+          <div
+            v-if="showSourceFilter"
+            role="group"
+            aria-label="按来源筛选"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <FilterChip
+              v-for="option in sourceOptions"
+              :key="option.value"
+              :label="option.label"
+              :count="option.count"
+              :active="activeSourceFilter === option.value"
+              @select="activeSourceFilter = option.value"
+            />
+          </div>
+          <label
+            v-if="scope.kind === 'all'"
+            class="flex cursor-pointer items-center gap-1.5 text-xs text-slate-400"
+          >
+            <input v-model="includeIgnored" type="checkbox" class="accent-indigo-500" />
+            包含已忽略项
+          </label>
+          <div
+            v-if="scope.kind === 'recent' && recentKindVisible"
+            role="group"
+            aria-label="按变化类型筛选"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <FilterChip
+              v-for="option in recentKindOptions"
+              :key="option.kind"
+              :label="option.label"
+              :count="option.count"
+              :active="recentKindFilter === option.kind"
+              @select="recentKindFilter = option.kind"
+            />
           </div>
           <div v-if="scope.kind !== 'settings'" class="ml-auto flex items-center gap-2">
             <input
