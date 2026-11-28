@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createShortcuts, launchApp, makeWorkdir } from "./e2e-helper";
+import { createShortcuts, launchApp, makeWorkdir, refreshLibrary } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 test("缺失应用：查看、逐个 / 勾选批量删除", async () => {
@@ -31,7 +31,7 @@ test("缺失应用：查看、逐个 / 勾选批量删除", async () => {
       unlinkSync(join(scanDir, `${name}.lnk`));
     }
     unlinkSync(join(greenDir, "缺失绿.exe"));
-    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await refreshLibrary(page);
     await expect(page.getByText(/^扫描完成：新增 0，缺失 4，忽略 0，重复 0$/u)).toBeVisible();
 
     const missingNav = page.getByRole("button", { name: "缺失应用", exact: true });

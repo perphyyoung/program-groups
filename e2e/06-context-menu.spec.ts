@@ -1,4 +1,4 @@
-import { createShortcut } from "./e2e-helper";
+import { createShortcut, refreshLibrary } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 test("应用行右键菜单提供启动与两项路径定位", async ({ slot }) => {
@@ -49,7 +49,7 @@ test("已忽略行右键菜单同样三项，缺失目标路径置灰", async ({
   const { page } = slot;
 
   createShortcut(slot.scanDir, "测试应用 失效", "C:\\PG-Missing\\missing.exe");
-  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await refreshLibrary(page);
 
   await page.getByRole("button", { name: "已忽略", exact: true }).click();
   const missingGroup = page.getByRole("button", { name: "目标文件不存在", exact: true });

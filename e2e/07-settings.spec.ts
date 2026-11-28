@@ -29,7 +29,7 @@ test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) 
   await expect(icon).toHaveAttribute("src", /^pg-icon:\/\//u);
 
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await expect(page.getByText(/^图标缓存已更新/u)).toBeHidden({ timeout: 5000 });
+  await expect(page.getByText(/^图标缓存已更新/u)).toBeHidden();
   const force = page.getByRole("checkbox", { name: "全量重建", exact: true });
   await force.check();
   await expect(page.getByRole("checkbox", { name: "start", exact: true })).toBeDisabled();

@@ -1,5 +1,6 @@
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
+import { refreshLibrary } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
@@ -54,7 +55,7 @@ test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
   for (let i = 0; i < 14; i += 1) {
     copyFileSync(helpShortcut, join(slot.scanDir, `测试帮助 ${i}.lnk`));
   }
-  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await refreshLibrary(page);
   await expect(helpGroup).toContainText("15");
 
   const scroller = page.getByTestId("main-scroll");

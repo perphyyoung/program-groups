@@ -3,7 +3,12 @@ import { mkdirSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import {
+  _electron as electron,
+  expect,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
 /** 复制当前环境变量，并剔除会让应用走 dev 模式的变量 */
 export function e2eEnv(extra: Record<string, string> = {}): Record<string, string> {
   const env: Record<string, string> = {};
@@ -51,6 +56,16 @@ export function createShortcuts(
 export interface LaunchedApp {
   app: ElectronApplication;
   page: Page;
+}
+
+/**
+ * 点「刷新」并等按钮恢复可用：扫描期间按钮 disabled，
+ * 扫描中守卫会直接 return，连发第二次刷新会被吞，必须等 enabled 再继续。
+ */
+export async function refreshLibrary(page: Page): Promise<void> {
+  const refreshButton = page.getByRole("button", { name: "刷新", exact: true });
+  await refreshButton.click();
+  await expect(refreshButton).toBeEnabled();
 }
 
 /**

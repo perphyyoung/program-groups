@@ -152,7 +152,9 @@
 - 固定扫描 fixture 在 `fixtures.ts` 里创建：`测试应用`、`测试应用 帮助`、`测试应用 副本`，均指向 `notepad.exe`
 - 用例内追加快捷方式用 `createShortcut(slot.scanDir, ...)`，再点「刷新」即可，不需要重启
 - 用例标题与结果由 fixtures 自动写入 `pg.log`（`▶` / `✓ 通过` / `✗`）
-- 共用函数在 `e2e-helper.ts`（`e2eEnv` / `makeWorkdir` / `createShortcut` / `launchApp`），日志在 `e2e-logger.ts`
+- 共用函数在 `e2e-helper.ts`（`e2eEnv` / `makeWorkdir` / `createShortcut` / `launchApp` / `refreshLibrary`），日志在 `e2e-logger.ts`
 - e2e 固定注入 `PG_STORE_JSON=[]`，不扫描本机真实 Store，避免环境差异；注入格式含 `Name` / `AppID` / `SignatureKind`，Store 签名进应用，其他进已忽略
 - 绿色软件目录用 `PG_GREEN_DIRS`（分号分隔）在启动时写入 `meta.green_dirs`，运行期统一读数据库，不读取本机真实路径
 - 用例覆盖范围变化后，同步更新本文件对应章节
+- 失败排查先读 `test-results/<用例>/error-context.md` 页面快照与 `pg.log` 打点
+- 需要交互式定位时：后台跑 `pnpm e2e <文件> --debug=cli`，按输出里的会话名 `playwright-cli attach <session>` 接管页面，边操作边把生成的定位器抄回用例；排查完停掉后台进程

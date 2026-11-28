@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Page } from "@playwright/test";
-import { createShortcut } from "./e2e-helper";
+import { createShortcut, refreshLibrary as refresh } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -18,13 +18,6 @@ function removeShortcuts(scanDir: string): void {
 /** retry 幂等：覆盖写快捷方式，放回后刷新即恢复 active */
 function ensureShortcut(scanDir: string): void {
   createShortcut(scanDir, "测试应用", notepad);
-}
-
-/** 刷新完成以按钮恢复可用为准：扫描期间 disabled，等 enabled 避免下一次刷新被扫描守卫吞掉 */
-async function refresh(page: Page): Promise<void> {
-  const refreshButton = page.getByRole("button", { name: "刷新", exact: true });
-  await refreshButton.click();
-  await expect(refreshButton).toBeEnabled();
 }
 
 async function openRecent(page: Page): Promise<void> {

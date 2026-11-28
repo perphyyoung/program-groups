@@ -18,6 +18,8 @@ export interface AppSlot {
 
 interface AppPool {
   acquire(file: string): Promise<AppSlot>;
+  /** 用例失败后丢弃实例：脏状态（缺失标记、改过的天数等）不能带进下一个用例 */
+  discard(file: string): Promise<void>;
 }
 
 async function dispose(slot: AppSlot): Promise<void> {
@@ -76,6 +78,11 @@ export const test = base.extend<{ slot: AppSlot }, { appPool: AppPool }>({
           state.current = { file, slot };
           return slot;
         },
+        async discard(file) {
+          if (state.current?.file !== file) return;
+          await dispose(state.current.slot);
+          state.current = null;
+        },
       });
 
       if (state.current) await dispose(state.current.slot);
@@ -86,6 +93,10 @@ export const test = base.extend<{ slot: AppSlot }, { appPool: AppPool }>({
   slot: [
     async ({ appPool }, use, testInfo) => {
       await use(await appPool.acquire(testInfo.file));
+      /* 失败用例的状态不可信：丢弃实例，下一个用例 acquire 时重建干净实例 */
+      if (testInfo.status !== "passed" && testInfo.status !== "skipped") {
+        await appPool.discard(testInfo.file);
+      }
     },
     /* 启动耗时不计入用例自身的 timeout */
     { scope: "test", timeout: 15_000 },
