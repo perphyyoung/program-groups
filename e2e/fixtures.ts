@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { test as base, expect, type ElectronApplication, type Page } from "@playwright/test";
-import { createShortcut, launchApp, makeWorkdir } from "./e2e-helper";
+import { NOTEPAD_PATH, createShortcut, launchApp, makeWorkdir } from "./e2e-helper";
 import { log } from "./e2e-logger";
 
 export interface AppSlot {
@@ -34,10 +34,9 @@ async function createSlot(workerIndex: number, seq: number): Promise<AppSlot> {
   await mkdir(appData, { recursive: true });
 
   /* 固定的开始菜单 fixture：一个正常应用、一个帮助入口、一个重复快捷方式 */
-  const target = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
-  createShortcut(scanDir, "测试应用", target);
-  createShortcut(scanDir, "测试应用 帮助", target);
-  createShortcut(scanDir, "测试应用 副本", target);
+  createShortcut(scanDir, "测试应用", NOTEPAD_PATH);
+  createShortcut(scanDir, "测试应用 帮助", NOTEPAD_PATH);
+  createShortcut(scanDir, "测试应用 副本", NOTEPAD_PATH);
 
   const { app, page } = await launchApp(appData, scanDir);
 

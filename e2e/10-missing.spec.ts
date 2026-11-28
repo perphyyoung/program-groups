@@ -1,6 +1,12 @@
 import { copyFileSync, mkdirSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { createShortcuts, launchApp, makeWorkdir, refreshLibrary } from "./e2e-helper";
+import {
+  createShortcuts,
+  launchApp,
+  makeWorkdir,
+  NOTEPAD_PATH,
+  refreshLibrary,
+} from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 test("缺失应用：查看、逐个 / 勾选批量删除", async () => {
@@ -12,7 +18,7 @@ test("缺失应用：查看、逐个 / 勾选批量删除", async () => {
   mkdirSync(appData, { recursive: true });
   mkdirSync(targets, { recursive: true });
   mkdirSync(greenDir, { recursive: true });
-  const notepad = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
+  const notepad = NOTEPAD_PATH;
   /* 三个快捷方式指向不同 exe，否则同应用会被去重成一个 */
   const shortcuts = ["缺失甲", "缺失乙", "缺失丙"].map((name) => {
     const target = join(targets, `${name}.exe`);

@@ -21,6 +21,6 @@
 - [x] P8 e2e-readme 约定节补调试工作流：`pnpm e2e --debug=cli` + `playwright-cli attach`
 - [ ] P3 计数断言改精确——评估后缓期：假绿需计数膨胀 10 倍，当前 fixture 无此路径；锚定正则侵入 15+ 处断言，等计数场景复杂化再做
 - [ ] P4 大用例 test.step 分段（02 五场景、03 排序 150 行），失败 trace 可定位到段（随下次改动顺带）
-- [ ] P5 fixture 支持自定义 greenDirs，08 / 09 / 10 收编回 fixtures——单独一轮：09 来源计数等断言会连锁变化
+- [x] P5 不动 fixture（为 3 个特例参数化共用基础设施不划算）：readme 已文档化双轨分工与手动清理规则；`NOTEPAD_PATH` 已提取共享
 - [x] P7 02 吸顶验证改 `mouse.wheel`，替代 programmatic scrollTop（可选）
 - [x] P9 config 加 `screenshot: "only-on-failure"`（可选，trace 已覆盖）

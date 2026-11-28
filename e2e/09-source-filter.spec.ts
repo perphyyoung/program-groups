@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { createShortcut, launchApp, makeWorkdir } from "./e2e-helper";
+import { createShortcut, launchApp, makeWorkdir, NOTEPAD_PATH } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 test("未分组栏按来源筛选", async () => {
@@ -11,7 +11,7 @@ test("未分组栏按来源筛选", async () => {
   mkdirSync(appData, { recursive: true });
   mkdirSync(scanDir, { recursive: true });
   mkdirSync(greenDir, { recursive: true });
-  const notepad = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
+  const notepad = NOTEPAD_PATH;
   createShortcut(scanDir, "开始应用", notepad);
   copyFileSync(notepad, join(greenDir, "绿色应用.exe"));
 

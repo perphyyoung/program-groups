@@ -158,3 +158,5 @@
 - 用例覆盖范围变化后，同步更新本文件对应章节
 - 失败排查先读 `test-results/<用例>/error-context.md` 页面快照与 `pg.log` 打点
 - 需要交互式定位时：后台跑 `pnpm e2e <文件> --debug=cli`，按输出里的会话名 `playwright-cli attach <session>` 接管页面，边操作边把生成的定位器抄回用例；排查完停掉后台进程
+- 生命周期双轨：默认场景走 slot fixture（同文件用例复用、失败自动隔离）；需要自定义 `greenDirs` 或完全自建扫描目录的用例（08 / 09 / 10）手动 `launchApp`，并保留独立优点——实例即用即毁，天然失败隔离
+- 手动模式规则：`try / finally` 里必须 `app.close()` 加 `rmSync` 清理目录，不得省略；用例内数据自建自清，不依赖其他文件

@@ -9,6 +9,8 @@ import {
   type ElectronApplication,
   type Page,
 } from "@playwright/test";
+/** 测试目标 exe：Windows 自带记事本，稳定存在 */
+export const NOTEPAD_PATH = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
 /** 复制当前环境变量，并剔除会让应用走 dev 模式的变量 */
 export function e2eEnv(extra: Record<string, string> = {}): Record<string, string> {
   const env: Record<string, string> = {};

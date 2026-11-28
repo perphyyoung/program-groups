@@ -1,7 +1,7 @@
 import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "./fixtures";
-import { launchApp, makeWorkdir } from "./e2e-helper";
+import { launchApp, makeWorkdir, NOTEPAD_PATH } from "./e2e-helper";
 
 test("绿色软件目录：全部 exe 收录，可手动忽略并提取图标", async () => {
   const base = await makeWorkdir("pg-green-e2e-");
@@ -12,7 +12,7 @@ test("绿色软件目录：全部 exe 收录，可手动忽略并提取图标", 
   mkdirSync(scanDir, { recursive: true });
   mkdirSync(join(greenDir, "Alpha"), { recursive: true });
   mkdirSync(join(greenDir, "Beta"), { recursive: true });
-  const notepad = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
+  const notepad = NOTEPAD_PATH;
   copyFileSync(notepad, join(greenDir, "Alpha", "Alpha.exe"));
   copyFileSync(notepad, join(greenDir, "Alpha", "helper.exe"));
   copyFileSync(notepad, join(greenDir, "Beta", "Beta.exe"));

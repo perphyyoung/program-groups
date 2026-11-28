@@ -2,11 +2,11 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Page } from "@playwright/test";
-import { createShortcut, refreshLibrary as refresh } from "./e2e-helper";
+import { NOTEPAD_PATH, createShortcut, refreshLibrary as refresh } from "./e2e-helper";
 import { expect, test } from "./fixtures";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const notepad = join(process.env["WINDIR"] ?? "C:\\Windows", "System32", "notepad.exe");
+const notepad = NOTEPAD_PATH;
 
 /** fixture 三个快捷方式指向同一 exe：只删「测试应用」会被「副本」去重顶替而不缺失，必须全删 */
 function removeShortcuts(scanDir: string): void {
