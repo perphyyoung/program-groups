@@ -11,5 +11,5 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 4,
   fullyParallel: false,
   reporter: "list",
-  use: { trace: "on-first-retry" },
+  use: { trace: "on-first-retry", screenshot: "only-on-failure" },
 });

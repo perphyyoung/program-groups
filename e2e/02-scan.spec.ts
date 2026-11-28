@@ -59,9 +59,9 @@ test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
   await expect(helpGroup).toContainText("15");
 
   const scroller = page.getByTestId("main-scroll");
-  await scroller.evaluate((node) => {
-    node.scrollTop = node.scrollHeight;
-  });
+  /* 真实滚轮输入滚动到底：programmatic scrollTop 不经过输入路径 */
+  await helpGroup.hover();
+  await page.mouse.wheel(0, 4000);
   await expect
     .poll(async () => {
       const headerBox = await helpGroup.boundingBox();
