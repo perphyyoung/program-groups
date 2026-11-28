@@ -18,6 +18,7 @@ import { filterApps, matchesSearch, type SourceFilter } from "./lib/app-filter";
 import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
+import type { ChangeKind } from "./lib/recent-changes";
 import { parseRecentWindowDays, recentChanges } from "./lib/recent-changes";
 import {
   buildRowMenu,
@@ -121,6 +122,8 @@ const groupSortDirection = ref<GroupSortDirection>("asc");
 const recentWindowDays = ref(7);
 const recentWindowDraft = ref("7");
 const recentWindowError = ref(false);
+/** 变化类型筛选：全部 / 新增 / 恢复 / 缺失；切栏重置，选中类清零自动回全部 */
+const recentKindFilter = ref<"all" | ChangeKind>("all");
 const sidebar = useTemplateRef<{ focusUngrouped: () => void }>("sidebar");
 const menuItems = ref<RowMenuItem[]>([]);
 const contextMenu = useTemplateRef<{
@@ -222,14 +225,17 @@ const recentTotal = computed(
     recentGroups.value.restored.length +
     recentGroups.value.missing.length,
 );
-/** 近期变化列表：搜索词同时过滤三类 */
+/** 近期变化列表：类型筛选与搜索词同时生效 */
 const recentFiltered = computed(() => {
   const keyword = search.value;
+  const kind = recentKindFilter.value;
   const matches = (app: AppEntry) => matchesSearch(app, keyword, (item) => appNote(item.id));
+  const pick = (list: AppEntry[], kindOf: ChangeKind) =>
+    kind === "all" || kind === kindOf ? list.filter(matches) : [];
   return {
-    added: recentGroups.value.added.filter(matches),
-    restored: recentGroups.value.restored.filter(matches),
-    missing: recentGroups.value.missing.filter(matches),
+    added: pick(recentGroups.value.added, "added"),
+    restored: pick(recentGroups.value.restored, "restored"),
+    missing: pick(recentGroups.value.missing, "missing"),
   };
 });
 const recentVisibleTotal = computed(
@@ -237,6 +243,35 @@ const recentVisibleTotal = computed(
     recentFiltered.value.added.length +
     recentFiltered.value.restored.length +
     recentFiltered.value.missing.length,
+);
+
+/** 类型筛选 chips：全部 + 计数非空的类；计数不随搜索变化（对齐来源筛选） */
+const recentKindOptions = computed(() => {
+  const counts: Record<ChangeKind, number> = {
+    added: recentGroups.value.added.length,
+    restored: recentGroups.value.restored.length,
+    missing: recentGroups.value.missing.length,
+  };
+  const kinds = (["added", "restored", "missing"] as ChangeKind[]).filter(
+    (kind) => counts[kind] > 0,
+  );
+  return [
+    { kind: "all" as const, label: "全部", count: recentTotal.value },
+    ...kinds.map((kind) => ({
+      kind,
+      label: kind === "added" ? "新增" : kind === "restored" ? "恢复" : "缺失",
+      count: counts[kind],
+    })),
+  ];
+});
+const recentKindVisible = computed(() => recentKindOptions.value.length >= 3);
+watch(
+  () => recentKindOptions.value,
+  (options) => {
+    if (recentKindFilter.value !== "all" && !options.some((o) => o.kind === recentKindFilter.value)) {
+      recentKindFilter.value = "all";
+    }
+  },
 );
 
 const filteredApps = computed(() =>
@@ -526,6 +561,7 @@ function selectScope(next: AppScope): void {
   scope.value = next;
   sourceFilter.value = "all";
   missingSourceFilter.value = "all";
+  recentKindFilter.value = "all";
   clearSelection();
   clearMissingSelection();
   if (next.kind === "settings") void loadIconSettings();
@@ -1125,6 +1161,21 @@ onBeforeUnmount(() => {
             >
               请输入 1–365 的整数
             </p>
+            <div
+              v-if="scope.kind === 'recent' && recentKindVisible"
+              role="group"
+              aria-label="按变化类型筛选"
+              class="mt-1 flex flex-wrap items-center gap-1.5"
+            >
+              <FilterChip
+                v-for="option in recentKindOptions"
+                :key="option.kind"
+                :label="option.label"
+                :count="option.count"
+                :active="recentKindFilter === option.kind"
+                @select="recentKindFilter = option.kind"
+              />
+            </div>
           </div>
           <div v-if="scope.kind !== 'settings'" class="ml-auto flex items-center gap-2">
             <input

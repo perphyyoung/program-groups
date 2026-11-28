@@ -142,6 +142,7 @@
 - 窗口判定：`page.clock.setFixedTime` 快进 20 天后窗口外数据移出（渲染进程 cutoff 计算，官方推荐方式）；天数放宽到 30 后回到窗口
 - 恢复：SQL seed `first_seen_at` 到 20 天前并置 missing，重启后放回快捷方式刷新，归入「恢复」块而非新增块（恢复需要主进程历史时间戳，clock 管不到，只能 seed）
 - 持久化：SQL seed `meta.recent_window_days = 30`，重启后输入框显示 30
+- 类型筛选：SQL 直插一行缺失应用造出两类，chip 行显示「全部 2 / 新增 1 / 缺失 1」（恢复为 0 不显示）；点 chip 单类切换、回全部；删除种子回到单类后 chip 整行隐藏（至少两类非空才显示）
 
 ## 约定
 

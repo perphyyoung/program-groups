@@ -148,3 +148,44 @@ test("天数持久化：meta seed 后重启展示", async ({ slot }) => {
   await openRecent(page);
   await expect(page.getByLabel("最近", { exact: true })).toHaveValue("30");
 });
+
+test("类型筛选：chip 切换单类与全部，单类时整行隐藏", async ({ slot }) => {
+  /* seed 第二类数据：直插一行缺失应用（status_changed_at = now），与 fixture 扫描互不影响 */
+  await slot.app.close().catch(() => undefined);
+  const now = new Date().toISOString();
+  const longAgo = new Date(Date.now() - 20 * DAY_MS).toISOString();
+  const db = new DatabaseSync(join(slot.appData, "pg.db"));
+  db.prepare(
+    "INSERT INTO apps (id, name, launch_path, launch_kind, exe_path, icon_file, source, status, entry_type, first_seen_at, last_seen_at, status_changed_at) " +
+      "VALUES ('seedmissing00000000', '种子应用', 'C:\\PG-Missing\\seed.exe', 'exe', 'C:\\PG-Missing\\seed.exe', NULL, 'start', 'missing', 'app', ?, ?, ?) " +
+      "ON CONFLICT(id) DO UPDATE SET status = 'missing', status_changed_at = excluded.status_changed_at",
+  ).run(longAgo, longAgo, now);
+  db.close();
+  await slot.relaunch();
+
+  const page = slot.page;
+  await openRecent(page);
+  const kindFilter = page.getByRole("group", { name: "按变化类型筛选", exact: true });
+  await expect(kindFilter).toBeVisible();
+  await expect(kindFilter.getByRole("button", { name: "全部 2", exact: true })).toBeVisible();
+  await expect(kindFilter.getByRole("button", { name: "新增 1", exact: true })).toBeVisible();
+  await expect(kindFilter.getByRole("button", { name: "缺失 1", exact: true })).toBeVisible();
+  await expect(kindFilter.getByRole("button", { name: "恢复 1", exact: true })).toHaveCount(0);
+
+  await kindFilter.getByRole("button", { name: "缺失 1", exact: true }).click();
+  await expect(page.getByTestId("recent-missing")).toBeVisible();
+  await expect(page.getByTestId("recent-added")).toHaveCount(0);
+  await expect(page.getByTestId("recent-restored")).toHaveCount(0);
+  await expect(page.getByText("种子应用", { exact: true })).toBeVisible();
+
+  await kindFilter.getByRole("button", { name: "全部 2", exact: true }).click();
+  await expect(page.getByTestId("recent-added")).toBeVisible();
+  await expect(page.getByTestId("recent-missing")).toBeVisible();
+
+  /* 删除种子回到单类：chip 整行隐藏（至少两类非空才显示） */
+  await page.getByRole("button", { name: "删除「种子应用」", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "删除缺失应用「种子应用」？", exact: true });
+  await dialog.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(kindFilter).toHaveCount(0);
+  await expect(page.getByTestId("recent-added")).toBeVisible();
+});
