@@ -14,6 +14,7 @@ import type {
   ScanSummary,
   ScannedApp,
 } from "../src/lib/types";
+import { DEFAULT_RECENT_WINDOW_DAYS, isRecentWindowDays } from "../src/lib/recent-changes";
 
 export type DiscoveredApp = ScannedApp;
 
@@ -41,6 +42,7 @@ interface AppDbRow {
   entry_type: EntryType;
   first_seen_at: string;
   last_seen_at: string;
+  status_changed_at: string | null;
 }
 
 interface GroupDbRow {
@@ -72,7 +74,8 @@ CREATE TABLE IF NOT EXISTS apps (
   status           TEXT NOT NULL DEFAULT 'active',
   entry_type       TEXT NOT NULL DEFAULT 'app',
   first_seen_at    TEXT NOT NULL,
-  last_seen_at     TEXT NOT NULL
+  last_seen_at     TEXT NOT NULL,
+  status_changed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS groups (
@@ -128,8 +131,11 @@ export function openDatabase(dbPath: string): DatabaseSync {
   if (!columns.some((column) => column.name === "source")) {
     db.exec("ALTER TABLE apps ADD COLUMN source TEXT NOT NULL DEFAULT 'start'");
   }
+  if (!columns.some((column) => column.name === "status_changed_at")) {
+    db.exec("ALTER TABLE apps ADD COLUMN status_changed_at TEXT");
+  }
   db.prepare(
-    "INSERT INTO meta (key, value) VALUES ('schema_version', '1') ON CONFLICT(key) DO NOTHING",
+    "INSERT INTO meta (key, value) VALUES ('schema_version', '2') ON CONFLICT(key) DO NOTHING",
   ).run();
   return db;
 }
@@ -152,6 +158,7 @@ function toApp(row: AppDbRow): AppRecord {
     status: row.status,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
+    statusChangedAt: row.status_changed_at,
   };
 }
 
@@ -244,6 +251,24 @@ export function setGroupSortDirection(direction: GroupSortDirection): void {
       "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
     .run(GROUP_SORT_DIRECTION_KEY, direction);
+}
+
+const RECENT_WINDOW_KEY = "recent_window_days";
+
+export function getRecentWindowDays(): number {
+  const row = requireDb().prepare("SELECT value FROM meta WHERE key = ?").get(RECENT_WINDOW_KEY) as
+    | { value: string }
+    | undefined;
+  const parsed = Number(row?.value);
+  return isRecentWindowDays(parsed) ? parsed : DEFAULT_RECENT_WINDOW_DAYS;
+}
+
+export function setRecentWindowDays(days: number): void {
+  requireDb()
+    .prepare(
+      "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(RECENT_WINDOW_KEY, String(days));
 }
 
 /** 手动排序：ids 必须且只能覆盖当前全部分组，事务内按顺序重写 sort */
@@ -493,7 +518,9 @@ export function getApp(id: string): AppRecord | null {
 }
 
 export function markAppMissing(id: string): void {
-  requireDb().prepare("UPDATE apps SET status = 'missing' WHERE id = ?").run(id);
+  requireDb()
+    .prepare("UPDATE apps SET status = 'missing', status_changed_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), id);
 }
 
 function hasAppChanged(current: AppDbRow | undefined, app: DiscoveredApp): boolean {
@@ -515,7 +542,7 @@ export function reconcile(
   discovered: DiscoveredApp[],
   scanStartedAt: string,
   scannedSources: ReadonlySet<AppSource> = new Set<AppSource>(["start"]),
-): Pick<ScanSummary, "added" | "updated" | "missing" | "changed"> {
+): Pick<ScanSummary, "added" | "updated" | "missing" | "changed"> & { restored: number } {
   const database = requireDb();
   const existing = new Map(
     (database.prepare("SELECT * FROM apps").all() as unknown as AppDbRow[]).map((row) => [
@@ -527,8 +554,8 @@ export function reconcile(
   const upsert = database.prepare(`
     INSERT INTO apps (
       id, name, launch_path, launch_kind, exe_path, icon_file, source,
-      status, first_seen_at, last_seen_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+      status, first_seen_at, last_seen_at, status_changed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       launch_path = excluded.launch_path,
@@ -538,10 +565,14 @@ export function reconcile(
       source = excluded.source,
       status = 'active',
       entry_type = 'app',
-      last_seen_at = excluded.last_seen_at
+      last_seen_at = excluded.last_seen_at,
+      /* SET 右侧引用旧行值：仅当应用此前缺失（本轮恢复）时更新变化时间 */
+      status_changed_at = CASE WHEN apps.status = 'missing'
+        THEN excluded.status_changed_at ELSE apps.status_changed_at END
   `);
 
   let added = 0;
+  let restored = 0;
   let changed = false;
   database.exec("BEGIN");
   try {
@@ -550,8 +581,11 @@ export function reconcile(
       if (!current) {
         added += 1;
         changed = true;
-      } else if (hasAppChanged(current, app)) {
-        changed = true;
+      } else {
+        if (current.status === "missing") restored += 1;
+        if (hasAppChanged(current, app)) {
+          changed = true;
+        }
       }
       upsert.run(
         app.id,
@@ -563,6 +597,7 @@ export function reconcile(
         app.source,
         scanStartedAt,
         scanStartedAt,
+        scanStartedAt,
       );
     }
     let missing = 0;
@@ -571,9 +606,9 @@ export function reconcile(
       const placeholders = sources.map(() => "?").join(", ");
       const missingResult = database
         .prepare(
-          `UPDATE apps SET status = 'missing' WHERE status = 'active' AND last_seen_at < ? AND source IN (${placeholders})`,
+          `UPDATE apps SET status = 'missing', status_changed_at = ? WHERE status = 'active' AND last_seen_at < ? AND source IN (${placeholders})`,
         )
-        .run(scanStartedAt, ...sources);
+        .run(scanStartedAt, scanStartedAt, ...sources);
       missing = Number(missingResult.changes);
       if (missing > 0) changed = true;
     }
@@ -582,6 +617,7 @@ export function reconcile(
       added,
       updated: discovered.length - added,
       missing,
+      restored,
       changed,
     };
   } catch (error) {

@@ -20,6 +20,7 @@ export interface Api {
   scanLibrary(): Promise<ScanSummary>;
   scanGreen(): Promise<ScanSummary>;
   deleteMissingApps(ids: string[]): Promise<number>;
+  setRecentWindowDays(days: number): Promise<void>;
   iconSettings(): Promise<IconSettings>;
   setIconSources(sources: IconSource[]): Promise<void>;
   updateIcons(options: IconUpdateOptions): Promise<IconUpdateResult>;

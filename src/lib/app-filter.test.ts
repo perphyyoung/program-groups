@@ -19,6 +19,7 @@ function app(
     status: "active",
     firstSeenAt: "2026-11-20T00:00:00.000Z",
     lastSeenAt: "2026-11-20T00:00:00.000Z",
+    statusChangedAt: null,
     groupIds,
     iconUrl: null,
   };

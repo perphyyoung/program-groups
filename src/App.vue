@@ -8,6 +8,7 @@ import GroupDialog from "./components/GroupDialog.vue";
 import IgnoredShortcutRow from "./components/IgnoredShortcutRow.vue";
 import ManualIgnoredAppRow from "./components/ManualIgnoredAppRow.vue";
 import MissingAppRow from "./components/MissingAppRow.vue";
+import RecentChangeRow from "./components/RecentChangeRow.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import AppToast from "./components/AppToast.vue";
 import RowContextMenu from "./components/RowContextMenu.vue";
@@ -17,6 +18,7 @@ import { filterApps, matchesSearch, type SourceFilter } from "./lib/app-filter";
 import { sortGroups } from "./lib/group-order";
 import { filterIgnoredItems, groupIgnoredItems, IGNORE_REASON_LABELS } from "./lib/ignored-groups";
 import { appNoteKey, shortcutNoteKey } from "./lib/note-keys";
+import { parseRecentWindowDays, recentChanges } from "./lib/recent-changes";
 import {
   buildRowMenu,
   type RowContextRequest,
@@ -116,6 +118,9 @@ const dialogBusy = ref(false);
 const groupMenuId = ref<string | null>(null);
 const groupSortMode = ref<GroupSortMode>("manual");
 const groupSortDirection = ref<GroupSortDirection>("asc");
+const recentWindowDays = ref(7);
+const recentWindowDraft = ref("7");
+const recentWindowError = ref(false);
 const sidebar = useTemplateRef<{ focusUngrouped: () => void }>("sidebar");
 const menuItems = ref<RowMenuItem[]>([]);
 const contextMenu = useTemplateRef<{
@@ -201,6 +206,39 @@ const sortedGroups = computed(() =>
   sortGroups(groups.value, groupSortMode.value, groupSortDirection.value),
 );
 
+/** 近期变化全量三类，供侧栏计数与列表共用；不受搜索影响 */
+const recentGroups = computed(() => {
+  const changes = recentChanges(apps.value, missingApps.value, recentWindowDays.value);
+  void window.api.log(
+    "debug",
+    `[recent] added=${changes.added.length} restored=${changes.restored.length} ` +
+      `missing=${changes.missing.length} days=${recentWindowDays.value}`,
+  );
+  return changes;
+});
+const recentTotal = computed(
+  () =>
+    recentGroups.value.added.length +
+    recentGroups.value.restored.length +
+    recentGroups.value.missing.length,
+);
+/** 近期变化列表：搜索词同时过滤三类 */
+const recentFiltered = computed(() => {
+  const keyword = search.value;
+  const matches = (app: AppEntry) => matchesSearch(app, keyword, (item) => appNote(item.id));
+  return {
+    added: recentGroups.value.added.filter(matches),
+    restored: recentGroups.value.restored.filter(matches),
+    missing: recentGroups.value.missing.filter(matches),
+  };
+});
+const recentVisibleTotal = computed(
+  () =>
+    recentFiltered.value.added.length +
+    recentFiltered.value.restored.length +
+    recentFiltered.value.missing.length,
+);
+
 const filteredApps = computed(() =>
   filterApps(
     apps.value,
@@ -266,6 +304,7 @@ const allIgnoredTotal = computed(() =>
 
 const currentTitle = computed(() => {
   const current = scope.value;
+  if (current.kind === "recent") return "近期变化";
   if (current.kind === "all") return "全部应用";
   if (current.kind === "ungrouped") return "未分组";
   if (current.kind === "ignored") return "已忽略";
@@ -296,6 +335,8 @@ function errorMessage(error: unknown): string {
 }
 
 function showToast(message: string, kind: "info" | "error"): void {
+  /* 界面提示统一进日志：排查界面问题按 [toast] 检索，错误提示记 warn */
+  void window.api.log(kind === "error" ? "warn" : "debug", `[toast] ${message}`);
   toast.value = { message, kind };
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -503,6 +544,8 @@ async function load(): Promise<void> {
   notes.value = data.notes;
   groupSortMode.value = data.groupSortMode;
   groupSortDirection.value = data.groupSortDirection;
+  recentWindowDays.value = data.recentWindowDays;
+  recentWindowDraft.value = String(data.recentWindowDays);
   groups.value = data.groups;
   missingApps.value = data.missing;
   const missingIds = new Set(data.missing.map((item) => item.id));
@@ -551,6 +594,38 @@ async function setGroupSortDirection(direction: GroupSortDirection): Promise<voi
   } catch (error) {
     groupSortDirection.value = previous;
     showToast(`保存排序方向失败：${errorMessage(error)}`, "error");
+  }
+}
+
+/** 近期变化天数：blur / Enter 提交；非法值行内报错，Esc 恢复当前值 */
+function onWindowInput(event: Event): void {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  recentWindowDraft.value = input.value;
+  recentWindowError.value = false;
+}
+
+function resetWindowDraft(): void {
+  recentWindowDraft.value = String(recentWindowDays.value);
+  recentWindowError.value = false;
+}
+
+async function commitWindowDays(): Promise<void> {
+  const parsed = parseRecentWindowDays(recentWindowDraft.value);
+  if (parsed === null) {
+    recentWindowError.value = true;
+    return;
+  }
+  recentWindowError.value = false;
+  if (parsed === recentWindowDays.value) return;
+  const previous = recentWindowDays.value;
+  recentWindowDays.value = parsed;
+  try {
+    await window.api.setRecentWindowDays(parsed);
+  } catch (error) {
+    recentWindowDays.value = previous;
+    recentWindowDraft.value = String(previous);
+    showToast(`保存天数失败：${errorMessage(error)}`, "error");
   }
 }
 
@@ -977,6 +1052,7 @@ onBeforeUnmount(() => {
         :groups="sortedGroups"
         :sort-mode="groupSortMode"
         :sort-direction="groupSortDirection"
+        :recent-count="recentTotal"
         :total-count="apps.length"
         :ungrouped-count="ungroupedCount"
         :ignored-count="ignoredCount"
@@ -1020,6 +1096,35 @@ onBeforeUnmount(() => {
               <input v-model="includeIgnored" type="checkbox" class="accent-indigo-500" />
               包含已忽略项
             </label>
+            <div
+              v-if="scope.kind === 'recent'"
+              class="mt-1 flex w-fit items-center gap-1.5 text-xs text-slate-400"
+            >
+              <label for="recent-window-days">最近</label>
+              <input
+                id="recent-window-days"
+                type="number"
+                min="1"
+                max="365"
+                step="1"
+                class="h-6 w-14 rounded-md border border-white/10 bg-white/5 px-1.5 text-center text-xs text-slate-200 outline-none focus:border-indigo-400/60 user-invalid:border-rose-400/60"
+                :value="recentWindowDraft"
+                :aria-invalid="recentWindowError"
+                :aria-describedby="recentWindowError ? 'recent-window-error' : undefined"
+                @input="onWindowInput"
+                @blur="commitWindowDays"
+                @keydown.enter.prevent="commitWindowDays"
+                @keydown.esc.prevent="resetWindowDraft"
+              />
+              <span>天</span>
+            </div>
+            <p
+              v-if="scope.kind === 'recent' && recentWindowError"
+              id="recent-window-error"
+              class="mt-0.5 text-xs text-rose-300"
+            >
+              请输入 1–365 的整数
+            </p>
           </div>
           <div v-if="scope.kind !== 'settings'" class="ml-auto flex items-center gap-2">
             <input
@@ -1156,6 +1261,58 @@ onBeforeUnmount(() => {
               />
             </div>
             <div v-else class="mt-16 text-center text-sm text-slate-500">{{ emptyText }}</div>
+          </div>
+
+          <div v-else-if="scope.kind === 'recent'" class="h-full">
+            <div v-if="recentVisibleTotal > 0" class="space-y-5 pt-5">
+              <section v-if="recentFiltered.added.length > 0" data-testid="recent-added">
+                <div class="px-3 pb-1.5 text-xs text-slate-500">
+                  新增 {{ recentFiltered.added.length }}
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <RecentChangeRow
+                    v-for="app in recentFiltered.added"
+                    :key="app.id"
+                    :app="app"
+                    kind="added"
+                    @run="launch(app)"
+                    @contextmenu="openRowMenu($event, appMenuSpec(app))"
+                  />
+                </div>
+              </section>
+              <section v-if="recentFiltered.restored.length > 0" data-testid="recent-restored">
+                <div class="px-3 pb-1.5 text-xs text-slate-500">
+                  恢复 {{ recentFiltered.restored.length }}
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <RecentChangeRow
+                    v-for="app in recentFiltered.restored"
+                    :key="app.id"
+                    :app="app"
+                    kind="restored"
+                    @run="launch(app)"
+                    @contextmenu="openRowMenu($event, appMenuSpec(app))"
+                  />
+                </div>
+              </section>
+              <section v-if="recentFiltered.missing.length > 0" data-testid="recent-missing">
+                <div class="px-3 pb-1.5 text-xs text-slate-500">
+                  缺失 {{ recentFiltered.missing.length }}
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <RecentChangeRow
+                    v-for="app in recentFiltered.missing"
+                    :key="app.id"
+                    :app="app"
+                    kind="missing"
+                    @remove="requestDeleteMissingApps([app.id], app.name)"
+                  />
+                </div>
+              </section>
+            </div>
+            <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">
+              {{ recentTotal === 0 ? `近 ${recentWindowDays} 天没有变化` : "没有匹配的应用" }}
+            </div>
           </div>
 
           <template v-else>

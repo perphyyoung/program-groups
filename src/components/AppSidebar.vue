@@ -9,6 +9,7 @@ const props = defineProps<{
   groups: GroupEntry[];
   sortMode: GroupSortMode;
   sortDirection: GroupSortDirection;
+  recentCount: number;
   totalCount: number;
   ungroupedCount: number;
   ignoredCount: number;
@@ -325,8 +326,22 @@ function onDrop(event: DragEvent, groupId: string): void {
   <aside class="flex w-56 shrink-0 flex-col border-r border-white/10 bg-[#0e1219]">
     <div class="shrink-0 px-2 pt-2">
       <button
-        aria-label="全部应用"
+        aria-label="近期变化"
         class="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition"
+        :class="
+          active.kind === 'recent'
+            ? 'bg-indigo-500/15 text-indigo-200'
+            : 'text-slate-300 hover:bg-white/5'
+        "
+        @click="emit('select', { kind: 'recent' })"
+      >
+        <span>近期变化</span>
+        <CountBadge :count="recentCount" :active="active.kind === 'recent'" />
+      </button>
+
+      <button
+        aria-label="全部应用"
+        class="mt-1 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition"
         :class="
           active.kind === 'all'
             ? 'bg-indigo-500/15 text-indigo-200'

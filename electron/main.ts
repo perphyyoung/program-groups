@@ -20,6 +20,7 @@ import {
   closeDatabase,
   countGreenAppsUnder,
   countIconStats,
+  countMissing,
   createGroup,
   deleteGreenAppsUnder,
   deleteGroup,
@@ -29,6 +30,7 @@ import {
   getGroupSortDirection,
   getGroupSortMode,
   getIconSources,
+  getRecentWindowDays,
   groupExists,
   isIconSource,
   listActiveApps,
@@ -52,6 +54,7 @@ import {
   setIconFiles,
   setIconSources,
   setNote,
+  setRecentWindowDays,
 } from "./db";
 import { log, logPath } from "./logger";
 import {
@@ -68,6 +71,7 @@ import { scanStoreApps, type StoreScanResult } from "./store-scan";
 import { scanGreenDirs } from "../src/lib/green-rules";
 import { entryTypesForIgnored } from "../src/lib/entry-types";
 import { isGroupSortDirection, isGroupSortMode } from "../src/lib/group-order";
+import { isRecentWindowDays } from "../src/lib/recent-changes";
 import type {
   AppEntry,
   AppRecord,
@@ -189,6 +193,7 @@ function toEntry(item: AppRecord, groupIdsByApp: Map<string, string[]>): AppEntr
     status: item.status,
     firstSeenAt: item.firstSeenAt,
     lastSeenAt: item.lastSeenAt,
+    statusChangedAt: item.statusChangedAt,
     groupIds: groupIdsByApp.get(item.id) ?? [],
     iconUrl: iconUrl(item.id, item.iconFile),
   };
@@ -200,6 +205,10 @@ function loadLibrary(): LibraryData {
   const visible = active.filter((item) => !manualIds.has(item.id));
   const hidden = active.filter((item) => manualIds.has(item.id));
   const { groups, groupIdsByApp } = loadGroupData(active, new Set(visible.map((item) => item.id)));
+  const recentWindowDays = getRecentWindowDays();
+  log.debug(
+    `[library] apps=${visible.length} manualIgnored=${hidden.length} missing=${countMissing()} recentWindowDays=${recentWindowDays}`,
+  );
 
   return {
     apps: visible.map((item) => toEntry(item, groupIdsByApp)),
@@ -209,6 +218,7 @@ function loadLibrary(): LibraryData {
     notes: listNotes(),
     groupSortMode: getGroupSortMode(),
     groupSortDirection: getGroupSortDirection(),
+    recentWindowDays,
   };
 }
 
@@ -330,7 +340,9 @@ async function runScan(
       ignoredItems: [...startResult.ignoredItems, ...storeResult.ignored],
       duplicate: startResult.duplicate,
       duplicateItems: startResult.duplicateItems,
-      ...reconciled,
+      added: reconciled.added,
+      updated: reconciled.updated,
+      missing: reconciled.missing,
       changed: reconciled.changed || entryTypeChanges > 0,
     };
     sender.send("scan:progress", { phase: "done", done: 1, total: 1 });
@@ -340,7 +352,8 @@ async function runScan(
         `green=${greenApps.length} greenOk=${greenResult.readable > 0} ` +
         `greenTruncated=${greenResult.truncated} ` +
         `ignored=${summary.ignored} duplicate=${summary.duplicate} ` +
-        `added=${summary.added} missing=${summary.missing} entryTypes=${entryTypeChanges}`,
+        `added=${summary.added} missing=${summary.missing} restored=${reconciled.restored} ` +
+        `entryTypes=${entryTypeChanges}`,
     );
     return summary;
   } finally {
@@ -597,6 +610,14 @@ ipcMain.handle("missing:delete", (_event, ids: unknown) =>
     if (!Array.isArray(ids) || ids.length === 0) throw new Error("缺失应用 ID 无效");
     if (ids.some((id) => typeof id !== "string")) throw new Error("缺失应用 ID 无效");
     return deleteMissingApps(ids);
+  }),
+);
+
+ipcMain.handle("recent:setWindowDays", (_event, days: unknown) =>
+  handleIpc("recent:setWindowDays", () => {
+    if (!isRecentWindowDays(days)) throw new Error("天数无效，需为 1–365 的整数");
+    setRecentWindowDays(days);
+    log.debug(`[recent] setWindowDays=${days}`);
   }),
 );
 
@@ -862,6 +883,7 @@ function createWindow(): void {
   win.webContents.on("render-process-gone", (_event, details) => {
     log.error(`[renderer gone] reason=${details.reason} exitCode=${details.exitCode}`);
   });
+  win.on("closed", () => log.debug(`[window] closed id=${win.id}`));
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
@@ -896,8 +918,10 @@ app.whenReady().then(() => {
     }
   });
   openDatabase(databasePath());
+  log.debug("[start] database opened");
   seedGreenDirs();
   createWindow();
+  log.debug(`[start] window created count=${BrowserWindow.getAllWindows().length}`);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -909,5 +933,15 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
+  log.debug(`[quit] window-all-closed platform=${process.platform}`);
   if (process.platform !== "darwin") app.quit();
+});
+
+process.on("uncaughtException", (error) => {
+  log.error(`[crash] uncaughtException ${error.stack ?? error.message}`);
+});
+process.on("unhandledRejection", (reason) => {
+  log.error(
+    `[crash] unhandledRejection ${reason instanceof Error ? reason.stack : String(reason)}`,
+  );
 });

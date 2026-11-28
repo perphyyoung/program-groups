@@ -6,10 +6,12 @@
 
 - 当前项目的框架为 electron，跨项目通用规则中的 tauri/rust 部分可忽略
 - 不要自动执行 pnpm release
+- 跑 e2e 前必须先过 lint 和 type-check：`pnpm lint && pnpm type-check` 通过后才跑 `pnpm e2e`
 
 ## 教训
 
 - Electron IPC 参数必须是可结构化克隆的纯数据：禁止把 `ref` / `reactive` 的深层代理对象或数组直接传给 `ipcRenderer.invoke`，先复制成纯值（如 `[...ids]`）或 `toRaw`；报错特征为 `An object could not be cloned.`，该问题已多次出现
+- 排障（测试失败、崩溃、数据不一致）先加日志/打点拿事实，禁止纯推理猜测下结论；一次跑不通就继续加打点，直到日志给出直接证据。用户多次强调过
 
 ## 编辑顺序
 
@@ -43,4 +45,5 @@
 - 通用语言.md：界面、数据与提示文案术语；不记录实现。
 - e2e/e2e-readme.md：e2e 文件覆盖范围与测试约定。
 - 竞品调研.md：外部参考与调研记录，不作为实现依据。
+- 日志使用说明.md：日志位置、级别、打点约定与排查入口。
 - todo.md：仅临时进度；完成后把规则迁入上述文档，提醒用户清空。

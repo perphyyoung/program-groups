@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("api", {
   scanLibrary: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scan"),
   scanGreen: (): Promise<ScanSummary> => ipcRenderer.invoke("library:scanGreen"),
   deleteMissingApps: (ids: string[]): Promise<number> => ipcRenderer.invoke("missing:delete", ids),
+  setRecentWindowDays: (days: number): Promise<void> =>
+    ipcRenderer.invoke("recent:setWindowDays", days),
   iconSettings: (): Promise<IconSettings> => ipcRenderer.invoke("icons:settings"),
   setIconSources: (sources: IconSource[]): Promise<void> =>
     ipcRenderer.invoke("icons:setSources", sources),

@@ -66,16 +66,36 @@ afterEach(() => {
 describe("database", () => {
   it("扫描对账：新增、更新、缺失", () => {
     const first = reconcile([app("a", "看图王"), app("b", "VLC")], "2026-11-20T00:00:00.000Z");
-    expect(first).toEqual({ added: 2, updated: 0, missing: 0, changed: true });
+    expect(first).toEqual({ added: 2, updated: 0, missing: 0, restored: 0, changed: true });
     expect(listActiveApps()).toHaveLength(2);
 
     const second = reconcile([app("a", "看图王")], "2026-11-20T01:00:00.000Z");
-    expect(second).toEqual({ added: 0, updated: 1, missing: 1, changed: true });
+    expect(second).toEqual({ added: 0, updated: 1, missing: 1, restored: 0, changed: true });
     expect(listActiveApps().map((item) => item.id)).toEqual(["a"]);
     expect(countMissing()).toBe(1);
 
     const third = reconcile([app("a", "看图王")], "2026-11-20T02:00:00.000Z");
     expect(third.changed).toBe(false);
+  });
+
+  it("状态变化时间：新增 / 缺失 / 恢复写入本轮扫描时间，状态不变不写", () => {
+    /* 新增：首扫写入 */
+    reconcile([app("a", "看图王")], "2026-11-20T00:00:00.000Z");
+    expect(listActiveApps()[0]?.statusChangedAt).toBe("2026-11-20T00:00:00.000Z");
+
+    /* 状态不变：连续扫描不更新变化时间 */
+    reconcile([app("a", "看图王")], "2026-11-20T01:00:00.000Z");
+    expect(listActiveApps()[0]?.statusChangedAt).toBe("2026-11-20T00:00:00.000Z");
+
+    /* 缺失：写入本轮扫描时间 */
+    reconcile([], "2026-11-20T02:00:00.000Z");
+    expect(listMissingApps()[0]?.statusChangedAt).toBe("2026-11-20T02:00:00.000Z");
+
+    /* 恢复：写新变化时间，first_seen 保持首次发现时间 */
+    reconcile([app("a", "看图王")], "2026-11-20T03:00:00.000Z");
+    const restored = listActiveApps()[0];
+    expect(restored?.statusChangedAt).toBe("2026-11-20T03:00:00.000Z");
+    expect(restored?.firstSeenAt).toBe("2026-11-20T00:00:00.000Z");
   });
 
   it("图标缓存：只更新已存在应用，统计跟随", () => {

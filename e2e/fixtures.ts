@@ -50,6 +50,7 @@ async function createSlot(workerIndex: number, seq: number): Promise<AppSlot> {
       const next = await launchApp(this.appData, this.scanDir);
       this.app = next.app;
       this.page = next.page;
+      log.info(`[e2e] relaunch 完成 closed=${this.page.isClosed()} url=${this.page.url()}`);
     },
   };
   return slot;

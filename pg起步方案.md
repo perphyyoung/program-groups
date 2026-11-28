@@ -92,7 +92,8 @@ CREATE TABLE apps (
   status           TEXT NOT NULL DEFAULT 'active', -- 'active' | 'missing'
   entry_type       TEXT NOT NULL DEFAULT 'app',    -- 'app' | 'uninstaller' | 'installer' | 'system'
   first_seen_at    TEXT NOT NULL,
-  last_seen_at     TEXT NOT NULL
+  last_seen_at     TEXT NOT NULL,
+  status_changed_at TEXT                          -- 最近一次 active↔missing 变化；NULL 为从未变化或 v1 存量
 );
 
 CREATE TABLE groups (
@@ -130,7 +131,7 @@ CREATE INDEX idx_app_groups_group ON app_groups(group_id);
 - `PRAGMA foreign_keys = ON`，删分组时归属级联删除，应用不受影响。
 - `journal_mode = WAL`，`synchronous = NORMAL`；pg 的数据只在本地，不存在 dsync 那种网盘撕碎索引的问题。
 - 不删除应用行。卸载后置 `missing`，重装同路径后置回 `active`，分组关系天然恢复。
-- `meta` 存 `schema_version`，MVP 为 `1`。
+- `meta` 存 `schema_version`，当前为 `2`（v2 增加 `apps.status_changed_at`）。
 
 ### 3.3 未分组查询
 
@@ -189,9 +190,10 @@ WHERE a.status = 'active'
 ### 4.4 增量与缺失
 
 - 每次扫描记录本轮 `scanStartedAt`。
-- 本轮出现的应用：`INSERT OR UPDATE`，`status = 'active'`，更新 `last_seen_at`。
-- 本轮未出现的应用：`UPDATE apps SET status = 'missing'`，**不删除行、不删除归属**。
+- 本轮出现的应用：`INSERT OR UPDATE`，`status = 'active'`，更新 `last_seen_at`；新增应用与从缺失恢复的应用同时写 `status_changed_at = scanStartedAt`，状态未变不写。
+- 本轮未出现的应用：`UPDATE apps SET status = 'missing', status_changed_at = scanStartedAt`，**不删除行、不删除归属**。
 - 重新出现：同 ID 命中，置回 `active`，原分组自动恢复。
+- v1 存量行 `status_changed_at` 为 NULL，表示变化时间未知，不进入近期变化栏。
 - MVP 不做文件监听；启动时后台扫一次，界面提供「刷新」按钮。
 - exe 路径变化（升级、搬家）会被当成新应用，旧应用转 `missing`，分组关系不会自动迁移。这是 MVP 已知限制，后续用「同名 + 安装目录」做迁移提示。
 
@@ -292,7 +294,8 @@ WHERE a.status = 'active'
 
 | 通道 | 入参 | 返回 |
 | --- | --- | --- |
-| `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection }`（`apps` 只含 active 且未手动忽略） |
+| `library:load` | — | `{ apps: AppEntry[]; manualIgnored: AppEntry[]; groups: GroupEntry[]; missingCount: number; notes: Record<string, string>; groupSortMode: GroupSortMode; groupSortDirection: GroupSortDirection; recentWindowDays: number }`（`apps` 只含 active 且未手动忽略） |
+| `recent:setWindowDays` | `days` | `void`，写 `meta.recent_window_days`；主进程校验 1–365 整数 |
 | `library:groups` | — | `{ groups: GroupEntry[]; memberships: MembershipEntry[] }`（分组变更后只刷新这部分，不重载应用与图标） |
 | `library:scan` | — | `ScanSummary`（只读图标缓存，不返回图标状态） |
 | `library:scanGreen` | — | `ScanSummary`，只扫绿色软件目录，不动 start / store |
@@ -396,6 +399,7 @@ WHERE a.status = 'active'
 - 扫描后 Store / Developer 签名应用出现，来源徽标为 `store`；其他打包应用进入已忽略的「Store 自动忽略应用」；可分组、备注、启动；卸载后刷新标缺失，路径入口置灰。
 - 行右键菜单固定「启动 / 打开目标路径 / 打开链接路径」，缺失项置灰；备注输入框内保留系统右键菜单。
 - 删除开始菜单快捷方式后刷新：真实应用从列表消失、底部显示缺失数；卸载器 / 安装器 / 系统工具不计入缺失；重新放回后刷新，应用回到原分组。
+- 侧栏「近期变化」显示窗口内新增 / 恢复 / 缺失总数；栏内三个分组块按变化时间倒序，新增 / 恢复行可启动与右键，缺失行可删除（走确认）；行内改「最近 n 天」即时生效，非法值行内报错，天数重启保留；存量缺失（无变化时间）不进近期变化。
 - 开始菜单里没有快捷方式的已安装应用不会出现（已知限制，后续用「手动添加 exe」兜底；注册表实测无新增，不做）。
 - `pnpm check`（format / lint / type-check / test / build）全绿；`pnpm e2e` 通过。
 
@@ -465,6 +469,7 @@ WHERE a.status = 'active'
 - 手动忽略：应用行尾入口，状态落库；已忽略栏顶部独立分组，可取消忽略，拖入分组时自动恢复
 - 统一行布局：RowLayout 六列，AppRow / IgnoredShortcutRow / ManualIgnoredAppRow 覆盖应用、规则忽略与手动忽略行；备注单行 10 字、只在中间列、无备注 hover 显示添加、参与搜索，路径仅 hover；备注落库，重启保留
 - 帮助/更新/卸载规则区分产品名与功能入口；重复快捷方式单独计数
+- 近期变化栏：侧栏顶部第一入口，新增 / 恢复 / 缺失三分组块；`apps.status_changed_at` 记录状态变化时间（schema v2）；窗口天数在栏内「最近 n 天」输入，1–365 写入 `meta.recent_window_days`；判定与过滤在 `src/lib/recent-changes.ts`
 - 图标缓存优化：`pg-icon://` 协议、扫描无变化跳过二次刷新、失败负缓存、`.lnk` mtime 失效判断
 - 扫描状态：右下角进度卡片显示阶段与进度条，扫描结束后底部居中显示结果提示；刷新按钮固定宽度、扫描期间禁用
 - 滚动：`html/body/#app` 用 `overflow: clip` 裁切，主列表是唯一滚动容器；备注聚焦只滚动主列表，不带动外层页面

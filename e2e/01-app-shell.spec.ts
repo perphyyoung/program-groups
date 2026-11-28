@@ -10,6 +10,7 @@ test("启动后展示未分组骨架与侧栏计数", async ({ slot }) => {
   /* 未分组栏不提供「包含已忽略项」 */
   await expect(page.getByRole("checkbox", { name: /^包含已忽略项$/u })).toHaveCount(0);
 
+  await expect(page.getByRole("button", { name: "近期变化", exact: true })).toContainText("1");
   await expect(page.getByRole("button", { name: "全部应用", exact: true })).toContainText("1");
   await expect(page.getByRole("button", { name: "未分组", exact: true })).toContainText("1");
   await expect(page.getByRole("button", { name: "已忽略", exact: true })).toContainText("1");

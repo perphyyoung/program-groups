@@ -27,6 +27,8 @@ export interface AppRecord {
   status: AppStatus;
   firstSeenAt: string;
   lastSeenAt: string;
+  /** 最近一次 active↔missing 状态变化时间；NULL 为从未变化或迁移前未知 */
+  statusChangedAt: string | null;
 }
 
 export interface AppEntry extends AppRecord {
@@ -53,6 +55,8 @@ export interface LibraryData {
   notes: Record<string, string>;
   groupSortMode: GroupSortMode;
   groupSortDirection: GroupSortDirection;
+  /** 近期变化窗口天数，1–365 */
+  recentWindowDays: number;
 }
 
 export interface MembershipEntry {
@@ -161,6 +165,7 @@ export interface ScanProgress {
 }
 
 export type AppScope =
+  | { kind: "recent" }
   | { kind: "all" }
   | { kind: "ungrouped" }
   | { kind: "ignored" }
