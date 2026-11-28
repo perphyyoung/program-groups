@@ -17,6 +17,8 @@ test("未分组栏按来源筛选", async () => {
 
   const { app, page } = await launchApp(appData, scanDir, [greenDir]);
   try {
+    /* 默认栏是近期变化，先切到未分组 */
+    await page.getByRole("button", { name: "未分组", exact: true }).click();
     const startRow = page.getByRole("button", { name: "开始应用", exact: true });
     const greenRow = page.getByRole("button", { name: "绿色应用", exact: true });
     await expect(startRow).toBeVisible();

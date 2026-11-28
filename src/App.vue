@@ -60,7 +60,8 @@ const duplicateItems = ref<IgnoredItem[]>([]);
 const openReasons = ref<Set<IgnoreReason>>(new Set());
 const manualIgnored = ref<AppEntry[]>([]);
 const manualOpen = ref(false);
-const scope = ref<AppScope>({ kind: "ungrouped" });
+/** 启动默认停在近期变化：最新鲜的入口；未分组等栏由侧栏切换 */
+const scope = ref<AppScope>({ kind: "recent" });
 const sourceFilter = ref<SourceFilter>("all");
 const missingSourceFilter = ref<SourceFilter>("all");
 const includeIgnored = ref(false);

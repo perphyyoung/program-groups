@@ -3,6 +3,8 @@ import { expect, test } from "./fixtures";
 
 test("应用行右键菜单提供启动与两项路径定位", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   const appRow = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appRow).toBeVisible();
 
@@ -77,6 +79,8 @@ test("已忽略行右键菜单同样三项，缺失目标路径置灰", async ({
 
 test("备注输入框内右键不弹出行菜单", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   const appRow = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appRow).toBeVisible();
   await appRow.hover();

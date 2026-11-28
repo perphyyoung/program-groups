@@ -5,6 +5,8 @@ import { expect, test } from "./fixtures";
 
 test("扫描应用、已忽略与重复快捷方式", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
 
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();

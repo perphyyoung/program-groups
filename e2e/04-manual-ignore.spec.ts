@@ -2,6 +2,8 @@ import { expect, test } from "./fixtures";
 
 test("手动忽略持久化，拖入分组后自动恢复", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试应用", exact: true })).toBeVisible();
 
   /* 准备一个分组，供手动忽略项拖入 */

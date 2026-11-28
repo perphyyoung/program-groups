@@ -19,6 +19,8 @@ test("绿色软件目录：全部 exe 收录，可手动忽略并提取图标", 
 
   const { app, page } = await launchApp(appData, scanDir, [greenDir]);
   try {
+    /* 默认栏是近期变化，先切到未分组 */
+    await page.getByRole("button", { name: "未分组", exact: true }).click();
     await expect(page.getByRole("button", { name: "Alpha", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "helper", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Beta", exact: true })).toBeVisible();

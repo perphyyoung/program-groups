@@ -1,13 +1,14 @@
 import { expect, test } from "./fixtures";
 
-test("启动后展示未分组骨架与侧栏计数", async ({ slot }) => {
+test("启动后默认停在近期变化，侧栏计数正确", async ({ slot }) => {
   const { page } = slot;
 
-  await expect(page.getByRole("heading", { name: "未分组", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "近期变化", exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("搜索当前列表", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "刷新", exact: true })).toBeEnabled();
-  await expect(page.getByTestId("app-list")).toBeVisible();
-  /* 未分组栏不提供「包含已忽略项」 */
+  /* 首次扫描收录的应用进入「新增」块 */
+  await expect(page.getByTestId("recent-added")).toBeVisible();
+  /* 近期变化栏不提供「包含已忽略项」 */
   await expect(page.getByRole("checkbox", { name: /^包含已忽略项$/u })).toHaveCount(0);
 
   await expect(page.getByRole("button", { name: "近期变化", exact: true })).toContainText("1");

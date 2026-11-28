@@ -4,7 +4,8 @@ import { expect, test } from "./fixtures";
 
 test("设置页按需更新图标缓存，支持全量重建", async ({ slot }) => {
   const { page } = slot;
-
+  /* 默认栏是近期变化，先切到未分组确认应用在列 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   await expect(page.getByRole("button", { name: "测试应用", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(page.getByRole("heading", { name: "图标缓存", exact: true })).toBeVisible();

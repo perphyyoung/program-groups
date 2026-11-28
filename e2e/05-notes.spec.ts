@@ -2,6 +2,8 @@ import { expect, test } from "./fixtures";
 
 test("应用与已忽略行备注持久化并参与搜索", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   const appRow = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appRow).toBeVisible();
 
@@ -44,6 +46,8 @@ test("应用与已忽略行备注持久化并参与搜索", async ({ slot }) => 
 
   await slot.relaunch();
   const restarted = slot.page;
+  /* relaunch 后默认停在近期变化，先切到未分组 */
+  await restarted.getByRole("button", { name: "未分组", exact: true }).click();
   await expect(
     restarted.getByRole("button", { name: "编辑「测试应用」的备注", exact: true }),
   ).toContainText("截图");

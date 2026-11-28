@@ -18,6 +18,8 @@ async function createGroup(page: Page, name: string): Promise<void> {
 
 test("新建分组自动聚焦并保留当前栏，多组归属重启后保留", async ({ slot }) => {
   const { page } = slot;
+  /* 默认栏是近期变化，先切到未分组 */
+  await page.getByRole("button", { name: "未分组", exact: true }).click();
   const appCard = page.getByRole("button", { name: "测试应用", exact: true });
   await expect(appCard).toBeVisible();
 
